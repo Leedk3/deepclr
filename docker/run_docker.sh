@@ -21,8 +21,8 @@ DEEPCLR_DIR="$(readlink -f "${SCRIPT_DIR}/../")"
 CONTAINER_NAME="deepclr"
 
 IMAGE_REGISTRY="docker.pkg.github.com/mhorn11/deepclr/"
-IMAGE_NAME="deepclr"
-IMAGE_TAG="1.0"
+IMAGE_NAME="deepclr-deps"
+IMAGE_TAG="latest"
 
 # read arguments
 while [[ $# -gt 0 ]]; do
@@ -151,6 +151,11 @@ else
     --user 10000:10001
   )
 fi
+
+# my statement
+DOCKER_ARGS+=(-v /home/usrg/deepclr/deepclr.egg-info:/home/usrg/deepclr/deepclr.egg-info:rw)
+DOCKER_ARGS+=(-v /home/usrg/Data/Dataset/3D_data/localize/dataset:/home/usrg/deepclr/data/original:rw)
+DOCKER_ARGS+=(-e KITTI_PATH="/home/usrg/deepclr/data")
 
 # mount directories
 for dir in "${MOUNT_DIRS[@]}"; do

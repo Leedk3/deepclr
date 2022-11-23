@@ -6,6 +6,8 @@ build
 venv
 *.egg-info
 *.pyc
-
+data
+dist
+.vscode
 # IDE
 .idea

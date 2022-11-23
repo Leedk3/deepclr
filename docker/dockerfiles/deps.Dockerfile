@@ -2,6 +2,9 @@ ARG TAG
 
 FROM pytorch/pytorch:1.8.1-cuda11.1-cudnn8-devel
 
+RUN rm /etc/apt/sources.list.d/cuda.list
+RUN rm /etc/apt/sources.list.d/nvidia-ml.list
+
 # System dependencies
 RUN apt update && apt install -q -y --no-install-recommends \
     # personal preference
