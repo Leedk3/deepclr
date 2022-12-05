@@ -1,4 +1,4 @@
-base_dir: '${MODEL_PATH}'
+base_dir: /home/usrg/deepclr/models #'${MODEL_PATH}'
 device: cuda
 
 data_loader:

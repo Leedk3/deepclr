@@ -18,11 +18,11 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 DEEPCLR_DIR="$(readlink -f "${SCRIPT_DIR}/../")"
 
 # default config
-CONTAINER_NAME="deepclr"
+CONTAINER_NAME="deepclr-pcdet"
 
 IMAGE_REGISTRY="docker.pkg.github.com/mhorn11/deepclr/"
-IMAGE_NAME="deepclr-deps"
-IMAGE_TAG="latest"
+IMAGE_NAME="deepclr"
+IMAGE_TAG="pcdet"
 
 # read arguments
 while [[ $# -gt 0 ]]; do
@@ -154,8 +154,9 @@ fi
 
 # my statement
 DOCKER_ARGS+=(-v /home/usrg/deepclr/deepclr.egg-info:/home/usrg/deepclr/deepclr.egg-info:rw)
-DOCKER_ARGS+=(-v /home/usrg/Data/Dataset/3D_data/localize/dataset:/home/usrg/deepclr/data/original:rw)
-DOCKER_ARGS+=(-e KITTI_PATH="/home/usrg/deepclr/data")
+# DOCKER_ARGS+=(-v /home/usrg/Data/Dataset/3D_data/localize/dataset:/home/usrg/deepclr/data/original:rw)
+DOCKER_ARGS+=(-e KITTI_PATH="/home/usrg/Data/Dataset/3D_data/localize/dataset")
+# DOCKER_ARGS+=(-e MODLE_PATH=/home/usrg/deepclr/models)
 
 # mount directories
 for dir in "${MOUNT_DIRS[@]}"; do

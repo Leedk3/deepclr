@@ -30,6 +30,11 @@ elif [[ "${TYPE}" = "deploy" ]]; then
   IMAGE_NAME="deepclr:${TAG}"
   DOCKERFILE="${SCRIPT_DIR}/dockerfiles/deploy.Dockerfile"
 
+elif [[ "${TYPE}" = "pcdet" ]]; then
+  # config
+  IMAGE_NAME="pcdet:${TAG}"
+  DOCKERFILE="${SCRIPT_DIR}/dockerfiles/pcdet.Dockerfile"
+
 else
   echo "Invalid Docker image type: ${TYPE}"
   exit 1
