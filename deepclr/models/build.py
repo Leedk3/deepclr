@@ -9,14 +9,17 @@ from ..config.config import ConfigEnum, Config
 from ..utils.checkpoint import load_model_state
 from .base import BaseModel
 from .deepclr import DeepCLR
-
+from .pvnavi import PVNAVI
 
 class ModelType(ConfigEnum):
     DEEPCLR = auto()
+    PVNAVI = auto()
 
     def get_class(self) -> Type[BaseModel]:
         if self == ModelType.DEEPCLR:
             return DeepCLR
+        elif self == ModelType.PVNAVI:
+            return PVNAVI
         else:
             raise NotImplementedError("ModelType not implemented")
 

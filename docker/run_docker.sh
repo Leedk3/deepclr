@@ -165,6 +165,19 @@ done
 
 # run container
 docker run --gpus all \
+  --privileged \
   "${DOCKER_ARGS[@]}" \
   "${IMAGE_REGISTRY}${IMAGE_NAME}:${IMAGE_TAG}" \
   "${ARGS}" || exit 1
+
+# # run container
+# docker run --gpus '"device=1"' \
+#   "${DOCKER_ARGS[@]}" \
+#   "${IMAGE_REGISTRY}${IMAGE_NAME}:${IMAGE_TAG}" \
+#   "${ARGS}" || exit 1
+
+# # run container
+# docker run --gpus '"device=0,1"' \
+#   "${DOCKER_ARGS[@]}" \
+#   "${IMAGE_REGISTRY}${IMAGE_NAME}:${IMAGE_TAG}" \
+#   "${ARGS}" || exit 1
