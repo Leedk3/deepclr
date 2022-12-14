@@ -12,8 +12,8 @@ ENV TZ=Asia/Seoul
 RUN apt-get install -y tzdata
 
 # A weired problem that hasn't been solved yet
-RUN python -m pip uninstall -y SharedArray && \
-    python -m pip install SharedArray
+# RUN python -m pip uninstall -y SharedArray && \
+#     python -m pip install SharedArray
 
 RUN python -m pip install spconv-cu111
 

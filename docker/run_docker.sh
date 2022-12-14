@@ -18,7 +18,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 DEEPCLR_DIR="$(readlink -f "${SCRIPT_DIR}/../")"
 
 # default config
-CONTAINER_NAME="deepclr-pcdet"
+CONTAINER_NAME="deepclr-pcdet2"
 
 IMAGE_REGISTRY="docker.pkg.github.com/mhorn11/deepclr/"
 IMAGE_NAME="deepclr"
@@ -164,8 +164,8 @@ for dir in "${MOUNT_DIRS[@]}"; do
 done
 
 # run container
-docker run --gpus all \
-  --privileged \
+echo "Opening docker env...."
+docker run --gpus '"device=0"' \
   "${DOCKER_ARGS[@]}" \
   "${IMAGE_REGISTRY}${IMAGE_NAME}:${IMAGE_TAG}" \
   "${ARGS}" || exit 1

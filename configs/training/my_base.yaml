@@ -18,12 +18,46 @@ model:
     dropout: 1.0
 
     cloud_features:
-      name: SetAbstraction
+      name: VoxelSetAbstraction #SetAbstraction
       params:
-        npoint: [1024]
+        npoint: [512]
         radii: [[0.5, 1.0]]
         nsamples: [[512, 1024]]
         mlps: [[[16, 16, 32], [16, 16, 32]]]
+        PFE:
+          NUM_POINT_FEATURES: 4
+          POINT_CLOUD_RANGE: [0.0, -40.0, -4, 70.4, 40.0, 2]
+          VOXEL_SIZE: [0.05, 0.05, 0.1]
+          POINT_SOURCE: raw_points
+          NUM_KEYPOINTS: 4096
+          NUM_OUTPUT_FEATURES: 128
+          SAMPLE_METHOD: FPS
+          FEATURES_SOURCE: ['bev', 'x_conv3', 'x_conv4', 'raw_points']
+          SA_LAYER:
+              raw_points:
+                  MLPS: [[16, 16], [16, 16]]
+                  POOL_RADIUS: [0.4, 0.8]
+                  NSAMPLE: [16, 16]
+              x_conv1:
+                  DOWNSAMPLE_FACTOR: 1
+                  MLPS: [[16, 16], [16, 16]]
+                  POOL_RADIUS: [0.4, 0.8]
+                  NSAMPLE: [16, 16]
+              x_conv2:
+                  DOWNSAMPLE_FACTOR: 2
+                  MLPS: [[32, 32], [32, 32]]
+                  POOL_RADIUS: [0.8, 1.2]
+                  NSAMPLE: [16, 32]
+              x_conv3:
+                  DOWNSAMPLE_FACTOR: 4
+                  MLPS: [[64, 64], [64, 64]]
+                  POOL_RADIUS: [1.2, 2.4]
+                  NSAMPLE: [16, 32]
+              x_conv4:
+                  DOWNSAMPLE_FACTOR: 8
+                  MLPS: [[64, 64], [64, 64]]
+                  POOL_RADIUS: [2.4, 4.8]
+                  NSAMPLE: [16, 32]
 
     merge:
       name: MotionEmbedding
