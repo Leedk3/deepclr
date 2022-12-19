@@ -281,17 +281,17 @@ class VoxelBackBone8xBase(nn.Module):
 
 class VoxelSetAbstraction(PVNAVIModule):
     voxel_backbone_8x : BackBoneModule
-    def __init__(self, input_dim: int, point_dim: int, mlps: List[List[List[int]]],
-                 npoint: List[int], radii: List[List[float]], nsamples: List[List[int]], PFE: Dict, BACKBONE_3D : Dict, 
+    def __init__(self, input_dim: int, point_dim: int, 
+                 PFE: Dict, BACKBONE_3D : Dict, 
                  batch_norm: bool = False, **_kwargs: Any):
         super().__init__()
         assert point_dim == 3
-        assert len(mlps) == len(npoint) == len(radii) == len(nsamples)
-        assert 0 < len(mlps) <= 2
+        # assert len(mlps) == len(npoint) == len(radii) == len(nsamples)
+        # assert 0 < len(mlps) <= 2
 
         self._point_dim = point_dim
         self.input_feat_dim = input_dim - self._point_dim
-        self._output_feat_dim = int(np.sum([x[-1] for x in mlps[-1]]))
+        # self._output_feat_dim = int(np.sum([x[-1] for x in mlps[-1]]))
         self.PFE = PFE
         self.voxel_size = PFE.VOXEL_SIZE
         self.point_cloud_range = PFE.POINT_CLOUD_RANGE
@@ -365,7 +365,7 @@ class VoxelSetAbstraction(PVNAVIModule):
                                                      point_cloud_range=PFE.POINT_CLOUD_RANGE)
 
     def output_dim(self) -> int:
-        return 3 + self._output_feat_dim
+        return 3 + self.PFE.NUM_OUTPUT_FEATURES
 
     def get_sampled_points(self, clouds):
 
