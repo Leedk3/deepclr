@@ -30,12 +30,12 @@ model:
         PFE:
           NUM_POINT_FEATURES: 4
           POINT_CLOUD_RANGE: [-40.0, -40.0, -4, 40.0, 40.0, 2]
-          VOXEL_SIZE: [0.05, 0.05, 0.1]
+          VOXEL_SIZE: [0.2, 0.2, 0.1] #[0.05, 0.05, 0.1]
           MAX_POINTS_PER_VOXEL: 5
-          MAX_NUMBER_OF_VOXELS: 1500 # 150000
+          MAX_NUMBER_OF_VOXELS: 100000 # 150000
           POINT_SOURCE: raw_points
           NUM_KEYPOINTS: 1024
-          NUM_OUTPUT_FEATURES: 128
+          NUM_OUTPUT_FEATURES: 64
           SAMPLE_METHOD: FPS
           FEATURES_SOURCE: ['x_conv2', 'x_conv3', 'x_conv4', 'raw_points']
           SA_LAYER:
@@ -69,13 +69,13 @@ model:
       params:
         k: 20
         radius: 10.0
-        mlp: [256, 256, 512] # [128, 128, 256]
+        mlp: [128, 128, 256]
 
     output:
       name: OutputSimple
       params:
-        mlp: [512, 512, 1024, 1024, 2048] #[256, 256, 512, 512, 1024]
-        linear: [2048, 1024, 512, 256] #[1024, 512, 256]
+        mlp: [256, 256, 512, 512, 1024]
+        linear: [1024, 512, 256]
 
 metrics:
   loss:

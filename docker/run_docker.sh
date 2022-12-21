@@ -165,7 +165,7 @@ done
 
 # run container
 echo "Opening docker env...."
-docker run --gpus '"device=1"' \
+docker run --gpus '"device=0"' \
   "${DOCKER_ARGS[@]}" \
   "${IMAGE_REGISTRY}${IMAGE_NAME}:${IMAGE_TAG}" \
   "${ARGS}" || exit 1
