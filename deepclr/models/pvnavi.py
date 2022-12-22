@@ -107,7 +107,7 @@ class MeanVFE(BackBoneModule):
         batch_dict={}
         pts = clouds.transpose(1, 2).contiguous().view(-1, clouds.shape[1])
         batch_dict['points'] = pts
-
+        
         if self.voxel_generator is None:
             self.voxel_generator = VoxelGenerator(
                 vsize_xyz=self.voxel_size,
@@ -121,7 +121,6 @@ class MeanVFE(BackBoneModule):
         # generated indices don't include batch axis, you need to add it by yourself.
         # see examples/voxel_gen.py for examples.
         # https://github.com/traveller59/spconv/blob/bd5bc8db882a0ad12a13e87a76b668c90ca68c4e/docs/USAGE.md
-
         points = batch_dict['points'].contiguous()
 
         voxel_output = self.voxel_generator(points, empty_mean=False)
@@ -133,10 +132,6 @@ class MeanVFE(BackBoneModule):
 
         num_voxels_in_batch = voxels.shape[0] / clouds.shape[0] 
         num_voxels_in_batch = int(num_voxels_in_batch)
-        # voxel_coords: (num_voxels, 4), [batch_idx, z_idx, y_idx, x_idx] -->spconv 2.x output :  z_idx, y_idx, x_idx
-        batch_indices = torch.arange(clouds.shape[0], device=voxels.device).view(-1, 1).repeat(1, num_voxels_in_batch).view(-1).long()
-        batch_indices = batch_indices.view(-1, 1)
-        coordinates = torch.cat([batch_indices, coordinates], dim=1)
 
         # if not batch_dict['use_lead_xyz']:
         #     voxels = voxels[..., 3:]  # remove xyz in voxels(N, 3)
@@ -233,11 +228,13 @@ class VoxelBackBone8xBase(nn.Module):
         
         voxel_features, voxel_coords = batch_dict['voxel_features'], batch_dict['voxel_coords']
         batch_size = batch_dict['batch_size']
-        # print(voxel_features.shape)
-        # print(voxel_coords.shape)
-        # print(self.sparse_shape)
-        # print(batch_size)
 
+        # Generate the batch indices
+        # voxel_coords: (num_voxels, 4), [batch_idx, z_idx, y_idx, x_idx] -->spconv 2.x output :  z_idx, y_idx, x_idx
+        batch_indices = torch.arange(batch_size, device=voxel_coords.device).view(-1, 1).repeat(1, voxel_coords.shape[0]).view(-1, batch_size).long()
+        batch_indices = batch_indices[:,0]
+        batch_indices = batch_indices.unsqueeze(1)
+        voxel_coords = torch.cat([batch_indices, voxel_coords], dim=1)
         input_sp_tensor = spconv.SparseConvTensor(
             features=voxel_features,
             indices=voxel_coords.int(),
@@ -296,7 +293,6 @@ class VoxelSetAbstraction(PVNAVIModule):
         self.PFE = PFE
         self.voxel_size = PFE.VOXEL_SIZE
         self.point_cloud_range = PFE.POINT_CLOUD_RANGE
-        self.batch_size = 5 * 2
 
         SA_cfg = PFE.SA_LAYER
         self.data_dict = Dict
@@ -629,6 +625,37 @@ class VoxelSetAbstraction(PVNAVIModule):
 
 #         return clouds
 
+class SelfAttention(nn.Module):
+    def __init__(self, input_dim, attention_dim):
+        super().__init__()
+        self.input_dim = input_dim
+        self.attention_dim = attention_dim
+        
+        # Linear layers to compute the queries, keys, and values
+        self.query_layer = nn.Linear(input_dim, attention_dim)
+        self.key_layer = nn.Linear(input_dim, attention_dim)
+        self.value_layer = nn.Linear(input_dim, attention_dim)
+        
+    def forward(self, inputs):
+        # Shape of inputs: [batch_size, sequence_length, input_dim]
+        
+        # Compute the queries, keys, and values
+        queries = self.query_layer(inputs)  # [batch_size, sequence_length, attention_dim]
+        keys = self.key_layer(inputs)  # [batch_size, sequence_length, attention_dim]
+        values = self.value_layer(inputs)  # [batch_size, sequence_length, attention_dim]
+        
+        # Compute the dot product of the queries and keys, and normalize it
+        dot_product = torch.matmul(queries, keys.transpose(1, 2))  # [batch_size, sequence_length, sequence_length]
+        dot_product = dot_product / (self.attention_dim ** 0.5)  # Normalize by the square root of the attention dim
+        
+        # Apply the softmax function to the dot product to get the attention weights
+        attention_weights = nn.functional.softmax(dot_product, dim=-1)  # [batch_size, sequence_length, sequence_length]
+        
+        # Compute the weighted sum of the values using the attention weights
+        weighted_sum = torch.matmul(attention_weights, values)  # [batch_size, sequence_length, attention_dim]
+        
+        return weighted_sum, attention_weights
+
 
 class GroupingModule(abc.ABC, nn.Module):
     """Abstract base class for point cloud grouping."""
@@ -648,11 +675,7 @@ class GlobalGrouping(GroupingModule):
 
     @staticmethod
     def _prepare_batch(cloud: torch.Tensor) -> torch.Tensor:
-        print("========Glocal grouping LAYER TEST ==========\n")
-        print("before : ", cloud.shape)
         pts = cloud.transpose(1, 2).contiguous().view(-1, cloud.shape[1])
-        print("after : ", pts.shape)
-        print("========Glocal grouping LAYER TEST ==========\n")
         return pts
 
     def forward(self, cloud0: torch.Tensor, cloud1: torch.Tensor) \
@@ -742,12 +765,17 @@ class MotionEmbeddingBase(nn.Module):
     _grouping: GroupingModule
 
     def __init__(self, input_dim: int, point_dim: int, k: int, radius: float, mlp: List[int],
-                 append_features: bool = True, batch_norm: bool = False, **_kwargs: Any):
+                attention: Dict, append_features: bool = True, batch_norm: bool = False, **_kwargs: Any):
         super().__init__()
         # print("========Embedding LAYER TEST ==========\n")
 
         self._point_dim = point_dim
         self._append_features = append_features
+        self._k = k
+        self._input_dim = input_dim
+        if attention.use_attention :
+            self._attention = SelfAttention(attention.NUM_KEYPOINTS, point_dim + 2 * (input_dim - point_dim))
+            self.attention_dict = attention
         # print(self._point_dim, self._append_features) : 3, True
         if k == 0:
             self._grouping = GlobalGrouping()
@@ -765,6 +793,9 @@ class MotionEmbeddingBase(nn.Module):
         # print("========Embedding LAYER TEST ==========\n")
 
     def output_dim(self) -> int:
+        if(self.attention_dict.use_attention) : 
+            return self._point_dim + 2 * (self._input_dim - self._point_dim)
+
         return self._point_dim + self._conv.output_dim()
 
     def forward(self, clouds0: torch.Tensor, clouds1: torch.Tensor) -> torch.Tensor:
@@ -775,9 +806,13 @@ class MotionEmbeddingBase(nn.Module):
 
         # merge
         pos_diff = group_pts1[:, :, :self._point_dim] - group_pts0[:, :, :self._point_dim]
+        # print("pts0 : " , pts0.shape)
         # print("pos_diff : " , pos_diff.shape)
         # print("group_pts0[:, :, self._point_dim:] : " , group_pts0[:, :, self._point_dim:].shape)
         # print("group_pts1[:, :, self._point_dim:] : " , group_pts1[:, :, self._point_dim:].shape)
+        # print("group_pts0 : " , group_pts0.shape)
+        # print("group_pts1 : " , group_pts1.shape)
+
         if self._append_features:
             merged = torch.cat((pos_diff, group_pts0[:, :, self._point_dim:], group_pts1[:, :, self._point_dim:]),
                                dim=2)
@@ -790,8 +825,18 @@ class MotionEmbeddingBase(nn.Module):
         merged = merged.transpose(1, 2)
         # print("merged 2: " , merged.shape)
 
-        merged_feat = self._conv(merged)
+        # TODO : self-attention layer here
+        if self.attention_dict.use_attention :
+            merge_attention = merged.reshape(clouds0.shape[0], -1, self.attention_dict.NUM_KEYPOINTS).contiguous()
+            # print("merge_attention 2: " , merge_attention)
+            weighted_sum, attention_weights = self._attention(merge_attention)
+            weighted_sum = weighted_sum.transpose(1, 2).contiguous()
+            # print("weighted_sum : ", weighted_sum.shape)
+            # print("attention_weights : ", attention_weights.shape)
+            return weighted_sum
 
+        # else : # 
+        merged_feat = self._conv(merged)
         # print("merged_feat : " , merged_feat.shape)
 
         # radius
@@ -808,6 +853,8 @@ class MotionEmbeddingBase(nn.Module):
         # print("out : " , out.shape)
 
         out = out.view(clouds0.shape[0], -1, out.shape[1]).transpose(1, 2).contiguous()
+        # print("(self._input_dim - self._point_dim) : ", (self._input_dim - self._point_dim))
+        # print("self._conv.output_dim()", self._conv.output_dim())
         # print("out2 : " , out.shape)
 
 
