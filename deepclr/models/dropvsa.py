@@ -742,13 +742,13 @@ class MotionEmbeddingBase(nn.Module):
         self._append_features = append_features
         self._k = k
         self._input_dim = input_dim
+        self.attention_dict = attention
+        self.transformer_dict = transformer
+        print("point_dim + 2 * (input_dim - point_dim) : " , point_dim + 2 * (input_dim - point_dim))
         if attention.use_attention :
             self._attention = SelfAttention(attention.NUM_KEYPOINTS, point_dim + 2 * (input_dim - point_dim))
-            self.attention_dict = attention
         elif transformer.use_transformer :
-            self._transformer = Transformer(transformer.NUM_KEYPOINTS, point_dim + 2 * (input_dim - point_dim),transformer.NUM_LAYER, transformer.NUM_HEAD)
-            self.transformer_dict = transformer
-        # print(self._point_dim, self._append_features) : 3, True
+            self._transformer = Transformer(transformer.NUM_KEYPOINTS, point_dim + 2 * (input_dim - point_dim), transformer.NUM_LAYER, transformer.NUM_HEAD)
         if k == 0:
             self._grouping = GlobalGrouping()
         else:
@@ -766,6 +766,8 @@ class MotionEmbeddingBase(nn.Module):
 
     def output_dim(self) -> int:
         if(self.attention_dict.use_attention) : 
+            return self._point_dim + 2 * (self._input_dim - self._point_dim)
+        elif(self.transformer_dict.use_transformer) : 
             return self._point_dim + 2 * (self._input_dim - self._point_dim)
 
         return self._point_dim + self._conv.output_dim()
@@ -806,11 +808,25 @@ class MotionEmbeddingBase(nn.Module):
                 merged.masked_scatter_(mask.unsqueeze(1), merged.new_zeros(merged.shape))
             merge_attention = merged.reshape(clouds0.shape[0], -1, self.attention_dict.NUM_KEYPOINTS).contiguous()
             # print("merge_attention 2: " , merge_attention)
-            weighted_sum, attention_weights = self._attention(merge_attention)
+            weighted_sum = self._attention(merge_attention)
             weighted_sum = weighted_sum.transpose(1, 2).contiguous()
             # print("weighted_sum : ", weighted_sum.shape)
             # print("attention_weights : ", attention_weights.shape)
             return weighted_sum
+
+        elif self.transformer_dict.use_transformer :
+            # radius
+            if self._radius > 0.0:
+                pos_diff_norm = torch.norm(pos_diff, dim=2)
+                mask = pos_diff_norm >= self._radius
+                merged.masked_scatter_(mask.unsqueeze(1), merged.new_zeros(merged.shape))
+            merge_attention = merged.reshape(clouds0.shape[0], -1, self.attention_dict.NUM_KEYPOINTS).contiguous()
+            print("merge_attention : ", merge_attention.shape)
+            transformer_output = self._transformer(merge_attention)
+            print(transformer_output.shape)
+            # weighted_sum = weighted_sum.transpose(1, 2).contiguous()
+            return transformer_output
+
 
         # else : # 
         merged_feat = self._conv(merged)

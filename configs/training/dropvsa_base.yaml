@@ -29,15 +29,15 @@ model:
 
         PFE:
           NUM_POINT_FEATURES: 4
-          POINT_CLOUD_RANGE: [-40.0, -40.0, -4, 40.0, 40.0, 2]
+          POINT_CLOUD_RANGE: [-60.0, -40.0, -4, 60.0, 40.0, 2]
           VOXEL_SIZE: [0.2, 0.2, 0.1] #[0.05, 0.05, 0.1]
           MAX_POINTS_PER_VOXEL: 5
           MAX_NUMBER_OF_VOXELS: 60000
           POINT_SOURCE: raw_points
           NUM_KEYPOINTS: 1024
-          NUM_OUTPUT_FEATURES: 64
+          NUM_OUTPUT_FEATURES: 128
           SAMPLE_METHOD: FPS
-          FEATURES_SOURCE: ['x_conv2', 'x_conv3', 'x_conv4', 'raw_points']
+          FEATURES_SOURCE: ['x_conv2', 'x_conv3', 'raw_points']
           SA_LAYER:
               raw_points:
                   MLPS: [[16, 16], [16, 16]]
@@ -71,14 +71,15 @@ model:
         radius: 10.0
         mlp: [128, 128, 256]
         attention:
-          use_attention: True
+          use_attention: False
           NUM_KEYPOINTS : 1024 #this should be same number above
                                # NUM_KEYPOINTS > point_dim + 2 * (input_dim - point_dim)
         transformer:
-          use_transformer: False
-          NUM_LAYER : 6
-          NUM_HEAD :  8
-
+          use_transformer: True
+          NUM_LAYER : 3
+          NUM_HEAD :  4
+          NUM_KEYPOINTS : 1024 #this should be same number above
+                               # NUM_KEYPOINTS > point_dim + 2 * (input_dim - point_dim)
     output:
       name: OutputSimple
       params:

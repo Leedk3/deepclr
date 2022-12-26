@@ -319,10 +319,6 @@ class VoxelSetAbstraction(PVNAVIModule):
 
             c_in += sum([x[-1] for x in mlps])
 
-        # if 'bev' in PFE.FEATURES_SOURCE:
-        #     c_bev = num_bev_features
-        #     c_in += c_bev
-
         if 'raw_points' in PFE.FEATURES_SOURCE:
             mlps = SA_cfg['raw_points'].MLPS
             for k in range(len(mlps)):
@@ -348,6 +344,7 @@ class VoxelSetAbstraction(PVNAVIModule):
         grid_size = (np.array(PFE.POINT_CLOUD_RANGE[3:6]) - np.array(PFE.POINT_CLOUD_RANGE[0:3])) / np.array(PFE.VOXEL_SIZE)
         self.grid_size = np.round(grid_size).astype(np.int64)
 
+        self.batch_dict={}
         self.meanVEF = MeanVFE(input_dim, 
                                PFE.VOXEL_SIZE, 
                                PFE.POINT_CLOUD_RANGE,
@@ -461,9 +458,9 @@ class VoxelSetAbstraction(PVNAVIModule):
         # new_xyz torch.Size([40960, 3])
         # new_xyz_batch_cnt torch.Size([10])
 
-        batch_dict = self.meanVEF(clouds)
-        batch_dict['batch_size'] = batch_size
-        batch_dict = self.voxel_backbone_8x(batch_dict)
+        self.batch_dict = self.meanVEF(clouds)
+        self.batch_dict['batch_size'] = batch_size
+        self.batch_dict = self.voxel_backbone_8x(self.batch_dict)
 
         if 'raw_points' in self.PFE.FEATURES_SOURCE:
             xyz = raw_points[:, 1:4]
@@ -489,7 +486,7 @@ class VoxelSetAbstraction(PVNAVIModule):
             point_features_list.append(pooled_features.view(batch_size, num_keypoints, -1))
 
         for k, src_name in enumerate(self.SA_layer_names):
-            cur_coords = batch_dict['multi_scale_3d_features'][src_name].indices
+            cur_coords = self.batch_dict['multi_scale_3d_features'][src_name].indices
             xyz = common_utils.get_voxel_centers(
                 cur_coords[:, 1:4],
                 downsample_times=self.downsample_times_map[src_name],
@@ -505,7 +502,7 @@ class VoxelSetAbstraction(PVNAVIModule):
                 xyz_batch_cnt=xyz_batch_cnt,
                 new_xyz=new_xyz,
                 new_xyz_batch_cnt=new_xyz_batch_cnt,
-                features=batch_dict['multi_scale_3d_features'][src_name].features.contiguous(),
+                features=self.batch_dict['multi_scale_3d_features'][src_name].features.contiguous(),
             )
             # print(k, src_name)
             # print("pooled_features : ", pooled_features, pooled_features.shape)
@@ -513,7 +510,7 @@ class VoxelSetAbstraction(PVNAVIModule):
             point_features_list.append(pooled_features.view(batch_size, num_keypoints, -1))
 
         point_features = torch.cat(point_features_list, dim=2)
-        # print("point_features 0:  ", point_features.shape)  #: torch.Size([10, 4096, 32])
+        # print("point_features 0:  ", point_features.shape)  #: torch.Size([batch x 2, num_keypoint, c_in])
 
         batch_idx = torch.arange(batch_size, device=keypoints.device).view(-1, 1).repeat(1, keypoints.shape[1]).view(-1)
         point_coords = torch.cat((batch_idx.view(-1, 1).float(), keypoints.view(-1, 3)), dim=1)
