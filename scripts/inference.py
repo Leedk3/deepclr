@@ -47,7 +47,7 @@ def main():
     model_cfg = load_model_config(model_file, weights_file)
 
     # load model
-    logger.info("Load model")
+    logger.info(f"Load model {weights_file}")
     model = load_trained_model(model_cfg)
     model = model.cuda()
 

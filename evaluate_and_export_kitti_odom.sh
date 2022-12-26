@@ -1,6 +1,6 @@
-SCENARIO_NAME='20221125_130022_kitti_07-10_DEEPCLR'
+SCENARIO_NAME='20221226_160858_kitti_07-10_PVNAVI'
 echo "Start evaluation"
-./scripts/evaluation.py /home/usrg/scenarios --scenario kitti_07-10
+#./scripts/evaluation.py /home/usrg/scenarios --scenario kitti_07-10
 
 echo "Finish evaluation. Start Kitti poses export ..."
 ./scripts/export_kitti_poses.py /home/usrg/scenarios/$SCENARIO_NAME

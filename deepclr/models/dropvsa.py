@@ -15,6 +15,7 @@ from pcdet.utils import common_utils
 from pcdet.utils.spconv_utils import replace_feature, spconv
 from pcdet.models.backbones_3d.spconv_backbone import post_act_block 
 from spconv.pytorch.utils import PointToVoxel as VoxelGenerator
+from torch.profiler import profile, record_function, ProfilerActivity
 from .transformer import SelfAttention, Transformer
 
 from ..config.config import Config
@@ -29,8 +30,8 @@ from .helper import Conv1dMultiLayer, LinearMultiLayer
 # my note :
 # change point feature extractor -> voxel feature extractor (same as PV_RCNN network)
 
-class PVNAVIModule(nn.Module, metaclass=abc.ABCMeta):
-    """Abstract base class for PVNAVI modules."""
+class DROPVSAModule(nn.Module, metaclass=abc.ABCMeta):
+    """Abstract base class for DROPVSA modules."""
     def __init__(self):
         super().__init__()
 
@@ -276,7 +277,7 @@ class VoxelBackBone8xBase(nn.Module):
         return batch_dict
 
 
-class VoxelSetAbstraction(PVNAVIModule):
+class VoxelSetAbstraction(DROPVSAModule):
     voxel_backbone_8x : BackBoneModule
     def __init__(self, input_dim: int, point_dim: int, 
                  PFE: Dict, BACKBONE_3D : Dict, 
@@ -553,7 +554,7 @@ class VoxelSetAbstraction(PVNAVIModule):
 
 
 
-# class VoxelSetAbstraction(PVNAVIModule):
+# class VoxelSetAbstraction(DROPVSAModule):
 #     """Set abstraction layer for preprocessing the individual point cloud."""
 #     def __init__(self, input_dim: int, point_dim: int, mlps: List[List[List[int]]],
 #                  npoint: List[int], radii: List[List[float]], nsamples: List[List[int]], PFE: Dict, 
@@ -733,7 +734,7 @@ class MotionEmbeddingBase(nn.Module):
     _grouping: GroupingModule
 
     def __init__(self, input_dim: int, point_dim: int, k: int, radius: float, mlp: List[int],
-                append_features: bool = True, batch_norm: bool = False, **_kwargs: Any):
+                attention: Dict, transformer: Dict, append_features: bool = True, batch_norm: bool = False, **_kwargs: Any):
         super().__init__()
         # print("========Embedding LAYER TEST ==========\n")
 
@@ -741,6 +742,13 @@ class MotionEmbeddingBase(nn.Module):
         self._append_features = append_features
         self._k = k
         self._input_dim = input_dim
+        if attention.use_attention :
+            self._attention = SelfAttention(attention.NUM_KEYPOINTS, point_dim + 2 * (input_dim - point_dim))
+            self.attention_dict = attention
+        elif transformer.use_transformer :
+            self._transformer = Transformer(transformer.NUM_KEYPOINTS, point_dim + 2 * (input_dim - point_dim),transformer.NUM_LAYER, transformer.NUM_HEAD)
+            self.transformer_dict = transformer
+        # print(self._point_dim, self._append_features) : 3, True
         if k == 0:
             self._grouping = GlobalGrouping()
         else:
@@ -757,6 +765,9 @@ class MotionEmbeddingBase(nn.Module):
         # print("========Embedding LAYER TEST ==========\n")
 
     def output_dim(self) -> int:
+        if(self.attention_dict.use_attention) : 
+            return self._point_dim + 2 * (self._input_dim - self._point_dim)
+
         return self._point_dim + self._conv.output_dim()
 
     def forward(self, clouds0: torch.Tensor, clouds1: torch.Tensor) -> torch.Tensor:
@@ -785,6 +796,21 @@ class MotionEmbeddingBase(nn.Module):
         # print("merged : " , merged.shape)
         merged = merged.transpose(1, 2)
         # print("merged 2: " , merged.shape)
+
+        # TODO : self-attention layer here
+        if self.attention_dict.use_attention :
+            # radius
+            if self._radius > 0.0:
+                pos_diff_norm = torch.norm(pos_diff, dim=2)
+                mask = pos_diff_norm >= self._radius
+                merged.masked_scatter_(mask.unsqueeze(1), merged.new_zeros(merged.shape))
+            merge_attention = merged.reshape(clouds0.shape[0], -1, self.attention_dict.NUM_KEYPOINTS).contiguous()
+            # print("merge_attention 2: " , merge_attention)
+            weighted_sum, attention_weights = self._attention(merge_attention)
+            weighted_sum = weighted_sum.transpose(1, 2).contiguous()
+            # print("weighted_sum : ", weighted_sum.shape)
+            # print("attention_weights : ", attention_weights.shape)
+            return weighted_sum
 
         # else : # 
         merged_feat = self._conv(merged)
@@ -822,7 +848,7 @@ class MotionEmbeddingBase(nn.Module):
         return out
 
 
-class MotionEmbedding(PVNAVIModule):
+class MotionEmbedding(DROPVSAModule):
     """Motion embedding for point cloud batch with sorting [template1, template2, ..., source1, source2, ...]."""
     def __init__(self, **kwargs: Any):
         super().__init__()
@@ -837,7 +863,7 @@ class MotionEmbedding(PVNAVIModule):
                                clouds[batch_dim:, ...])
 
 
-class OutputSimple(PVNAVIModule):
+class OutputSimple(DROPVSAModule):
     """Simple output module with mini-PointNet and fully connected layers."""
     def __init__(self, input_dim: int, label_type: LabelType, mlp: List[int], linear: List[int],
                  batch_norm: bool = False, dropout: bool = False, **_kwargs: Any):
@@ -945,7 +971,7 @@ class TransformLossCalculation(nn.Module):
             return tr_loss
 
 
-class PVNAVILoss(PVNAVIModule, metaclass=abc.ABCMeta):
+class DROPVSALoss(DROPVSAModule, metaclass=abc.ABCMeta):
     """Abstract base class for loss calculation modules."""
     def __init__(self):
         super().__init__()
@@ -958,7 +984,7 @@ class PVNAVILoss(PVNAVIModule, metaclass=abc.ABCMeta):
         raise NotImplementedError
 
 
-class TransformLoss(PVNAVILoss):
+class TransformLoss(DROPVSALoss):
     """Weighted transform loss with fixed weights."""
     def __init__(self, label_type: LabelType, p: int, sx: float, sq: float, **_kwargs: Any):
         super().__init__()
@@ -979,7 +1005,7 @@ class TransformLoss(PVNAVILoss):
         return loss
 
 
-class TransformUncertaintyLoss(PVNAVILoss):
+class TransformUncertaintyLoss(DROPVSALoss):
     """Weighted transform loss with epistemic uncertainty."""
     def __init__(self, label_type: LabelType, p: int, sx: float, sq: float, **_kwargs: Any):
         super().__init__()
@@ -1000,7 +1026,7 @@ class TransformUncertaintyLoss(PVNAVILoss):
         return loss
 
 
-class AccumulatedLoss(PVNAVILoss):
+class AccumulatedLoss(DROPVSALoss):
     """Accumulated loss of multiple loss types."""
     def __init__(self, modules: List[torch.nn.Module]):
         super().__init__()
@@ -1020,22 +1046,22 @@ class AccumulatedLoss(PVNAVILoss):
         return torch.stack(loss_values, dim=0).sum()
 
 
-def init_module(cfg: Config, *args: Any, **kwargs: Any) -> PVNAVIModule:
-    """Initialize PVNAVIModule from config."""
-    return factory(PVNAVIModule, cfg.name, *args, **cfg.params, **kwargs)
+def init_module(cfg: Config, *args: Any, **kwargs: Any) -> DROPVSAModule:
+    """Initialize DROPVSAModule from config."""
+    return factory(DROPVSAModule, cfg.name, *args, **cfg.params, **kwargs)
 
 
-def init_loss_module(cfg: Config, label_type: LabelType, *args: Any, **kwargs: Any) -> PVNAVILoss:
-    """Initialize PVNAVILoss from config."""
-    return factory(PVNAVILoss, cfg.name, *args, label_type=label_type, **cfg.params, **kwargs)
+def init_loss_module(cfg: Config, label_type: LabelType, *args: Any, **kwargs: Any) -> DROPVSALoss:
+    """Initialize DROPVSALoss from config."""
+    return factory(DROPVSALoss, cfg.name, *args, label_type=label_type, **cfg.params, **kwargs)
 
 
-def init_optional_module(cfg: Optional[Config], *args: Any, **kwargs: Any) -> Optional[PVNAVIModule]:
-    """Initialize optional PVNAVIModule from config."""
+def init_optional_module(cfg: Optional[Config], *args: Any, **kwargs: Any) -> Optional[DROPVSAModule]:
+    """Initialize optional DROPVSAModule from config."""
     if cfg is None:
         return None
     else:
-        return factory(PVNAVIModule, cfg.name, *args, **cfg.params, **kwargs)
+        return factory(DROPVSAModule, cfg.name, *args, **cfg.params, **kwargs)
 
 
 def split_output(output: Any) -> Tuple[Any, Any]:
@@ -1050,9 +1076,9 @@ def split_output(output: Any) -> Tuple[Any, Any]:
     return data, aux
 
 
-class PVNAVI(BaseModel):
-    """Main PVNAVI network."""
-    _loss_layer: Optional[PVNAVILoss]
+class DROPVSA(BaseModel):
+    """Main DROPVSA network."""
+    _loss_layer: Optional[DROPVSALoss]
 
     def __init__(self, input_dim: int, label_type: LabelType, cloud_features: Config,
                  merge: Config, output: Config, transform: Optional[Config] = None,

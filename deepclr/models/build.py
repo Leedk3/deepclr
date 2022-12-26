@@ -10,16 +10,20 @@ from ..utils.checkpoint import load_model_state
 from .base import BaseModel
 from .deepclr import DeepCLR
 from .pvnavi import PVNAVI
+from .dropvsa import DROPVSA
 
 class ModelType(ConfigEnum):
     DEEPCLR = auto()
     PVNAVI = auto()
+    DROPVSA = auto()
 
     def get_class(self) -> Type[BaseModel]:
         if self == ModelType.DEEPCLR:
             return DeepCLR
         elif self == ModelType.PVNAVI:
             return PVNAVI
+        elif self == ModelType.DROPVSA:
+            return DROPVSA
         else:
             raise NotImplementedError("ModelType not implemented")
 

@@ -12,7 +12,7 @@ model:
   point_dim: 3
   label_type: pose3d_dual_quat
 
-  model_type: pvnavi
+  model_type: dropvsa
   params:
     batch_norm: False
     dropout: 1.0
