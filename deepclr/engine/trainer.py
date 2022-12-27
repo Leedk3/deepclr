@@ -280,6 +280,9 @@ def run_trainer(
                 for name, fig in eval_export.plot_sequences().items():
                     writer.add_figure(f'val/{name}', fig, trainer.state.iteration)
 
+                for name, fig in eval_export.plot_sequences_2d().items():
+                    writer.add_figure(f'val/{name}_2d', fig, trainer.state.iteration)
+
                 writer.add_figure('val/kitti_errors', eval_export.plot_total_kitti_errors(), trainer.state.iteration)
                 writer.add_figure('val/segment_errors', eval_export.plot_segment_error_bars(), trainer.state.iteration)
 

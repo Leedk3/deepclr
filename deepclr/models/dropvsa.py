@@ -16,7 +16,7 @@ from pcdet.utils.spconv_utils import replace_feature, spconv
 from pcdet.models.backbones_3d.spconv_backbone import post_act_block 
 from spconv.pytorch.utils import PointToVoxel as VoxelGenerator
 from torch.profiler import profile, record_function, ProfilerActivity
-from .transformer import SelfAttention, Transformer
+from .transformer import SelfAttention, Transformer3D, Transformer
 
 from ..config.config import Config
 from ..data.labels import LabelType
@@ -798,39 +798,7 @@ class MotionEmbeddingBase(nn.Module):
         # print("merged : " , merged.shape)
         merged = merged.transpose(1, 2)
         # print("merged 2: " , merged.shape)
-
-        # TODO : self-attention layer here
-        if self.attention_dict.use_attention :
-            # radius
-            if self._radius > 0.0:
-                pos_diff_norm = torch.norm(pos_diff, dim=2)
-                mask = pos_diff_norm >= self._radius
-                merged.masked_scatter_(mask.unsqueeze(1), merged.new_zeros(merged.shape))
-            merge_attention = merged.reshape(clouds0.shape[0], -1, self.attention_dict.NUM_KEYPOINTS).contiguous()
-            # print("merge_attention 2: " , merge_attention)
-            weighted_sum = self._attention(merge_attention)
-            weighted_sum = weighted_sum.transpose(1, 2).contiguous()
-            # print("weighted_sum : ", weighted_sum.shape)
-            # print("attention_weights : ", attention_weights.shape)
-            return weighted_sum
-
-        elif self.transformer_dict.use_transformer :
-            # radius
-            if self._radius > 0.0:
-                pos_diff_norm = torch.norm(pos_diff, dim=2)
-                mask = pos_diff_norm >= self._radius
-                merged.masked_scatter_(mask.unsqueeze(1), merged.new_zeros(merged.shape))
-            merge_attention = merged.reshape(clouds0.shape[0], -1, self.attention_dict.NUM_KEYPOINTS).contiguous()
-            print("merge_attention : ", merge_attention.shape)
-            transformer_output = self._transformer(merge_attention)
-            print(transformer_output.shape)
-            # weighted_sum = weighted_sum.transpose(1, 2).contiguous()
-            return transformer_output
-
-
-        # else : # 
         merged_feat = self._conv(merged)
-        # print("merged_feat : " , merged_feat.shape)
 
         # radius
         if self._radius > 0.0:
@@ -850,6 +818,19 @@ class MotionEmbeddingBase(nn.Module):
         # print("self._conv.output_dim()", self._conv.output_dim())
         # print("out2 : " , out.shape)
 
+        # TODO : self-attention layer here
+        if self.attention_dict.use_attention :
+            weighted_sum = self._attention(out)
+            weighted_sum = weighted_sum.transpose(1, 2).contiguous()
+            # print("weighted_sum : ", weighted_sum.shape)
+            # print("attention_weights : ", attention_weights.shape)
+            return weighted_sum
+
+        elif self.transformer_dict.use_transformer :
+            transformer_output = self._transformer(out)
+            print(transformer_output.shape)
+            # weighted_sum = weighted_sum.transpose(1, 2).contiguous()
+            return transformer_output
 
         # pos_diff :  torch.Size([2560, 20, 3])
         # group_pts0[:, :, self._point_dim:] :  torch.Size([2560, 20, 64])

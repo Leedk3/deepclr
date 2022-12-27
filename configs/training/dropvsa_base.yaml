@@ -71,11 +71,11 @@ model:
         radius: 10.0
         mlp: [128, 128, 256]
         attention:
-          use_attention: False
+          use_attention: True
           NUM_KEYPOINTS : 1024 #this should be same number above
                                # NUM_KEYPOINTS > point_dim + 2 * (input_dim - point_dim)
         transformer:
-          use_transformer: True
+          use_transformer: False
           NUM_LAYER : 3
           NUM_HEAD :  4
           NUM_KEYPOINTS : 1024 #this should be same number above

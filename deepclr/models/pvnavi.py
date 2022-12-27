@@ -15,7 +15,6 @@ from pcdet.utils import common_utils
 from pcdet.utils.spconv_utils import replace_feature, spconv
 from pcdet.models.backbones_3d.spconv_backbone import post_act_block 
 from spconv.pytorch.utils import PointToVoxel as VoxelGenerator
-from .transformer import SelfAttention, Transformer
 
 from ..config.config import Config
 from ..data.labels import LabelType
