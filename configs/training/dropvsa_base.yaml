@@ -70,16 +70,29 @@ model:
         k: 20
         radius: 10.0
         mlp: [128, 128, 256]
-        attention:
-          use_attention: True
-          NUM_KEYPOINTS : 1024 #this should be same number above
-                               # NUM_KEYPOINTS > point_dim + 2 * (input_dim - point_dim)
+        # attention:
+        #   use_attention: False
+        #   NUM_KEYPOINTS : 1024 #this should be same number above
+        #                        # NUM_KEYPOINTS > point_dim + 2 * (input_dim - point_dim)
         transformer:
-          use_transformer: False
+          use_transformer: True
           NUM_LAYER : 3
           NUM_HEAD :  4
           NUM_KEYPOINTS : 1024 #this should be same number above
                                # NUM_KEYPOINTS > point_dim + 2 * (input_dim - point_dim)
+          enc_nlayers : 3
+          enc_dim : 256
+          enc_nhead : 4
+          enc_ffn_dim : 128
+          enc_dropout : 0.1
+          enc_activation : "relu"
+
+          dec_nlayers : 4
+          dec_dim : 256
+          dec_nhead : 4
+          dec_ffn_dim : 256
+          dec_dropout : 0.1
+
     output:
       name: OutputSimple
       params:

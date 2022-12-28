@@ -20,6 +20,8 @@ RUN python -m pip install spconv-cu111
 RUN python -m pip install --upgrade git+https://github.com/klintan/pypcd.git
 
 RUN python -m pip install pillow==8.3.2
+RUN python -m pip install trimesh
+
 # RUN apt install -y libgl1-mesa-glx
 
 RUN apt-get install -y tmux tmuxp vim 

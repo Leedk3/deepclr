@@ -18,6 +18,15 @@ from spconv.pytorch.utils import PointToVoxel as VoxelGenerator
 from torch.profiler import profile, record_function, ProfilerActivity
 from .transformer import SelfAttention, Transformer3D, Transformer
 
+# from detr3d.utils.pc_util import scale_points, shift_scale_points
+
+from detr3d.models.helpers import GenericMLP
+from detr3d.models.position_embedding import PositionEmbeddingCoordsSine
+from detr3d.models.transformer import (MaskedTransformerEncoder, TransformerDecoder,
+                                TransformerDecoderLayer, TransformerEncoder,
+                                TransformerEncoderLayer)
+
+
 from ..config.config import Config
 from ..data.labels import LabelType
 from ..utils.factory import factory
@@ -526,7 +535,7 @@ class VoxelSetAbstraction(DROPVSAModule):
         # batch_dict['point_coords'] = point_coords[:, :3] # (BxN, 4)
 
         point_features = point_features.view(batch_size, self.PFE.NUM_KEYPOINTS, -1)
-        point_xyz = point_coords[:, :3].view(batch_size, -1, self._point_dim)
+        point_xyz = point_coords[:, 1:4].view(batch_size, -1, self._point_dim)
 
         # print("point_features : ", point_features.shape)
         # print("point_xyz : ", point_xyz.shape)
@@ -553,77 +562,273 @@ class VoxelSetAbstraction(DROPVSAModule):
     #         return clouds
 
 
+class ModelTransformer(nn.Module):
+    """
+    Main ModelTransformer model. Consists of the following learnable sub-models
+    - encoder: series of self-attention blocks to extract point features
+                Input is a N'xD matrix of N' point features
+                Output is a N''xD matrix of N'' point features.
+                N'' = N' for regular encoder; N'' = N'//2 for masked encoder
+    - query computation: samples a set of B coordinates from the N'' points
+                and outputs a BxD matrix of query features.
+    - decoder: series of self-attention and cross-attention blocks to produce BxD box features
+                Takes N''xD features from the encoder and BxD query features.
+    - mlp_heads: Predicts bounding box parameters and classes from the BxD box features
+    """
 
-# class VoxelSetAbstraction(DROPVSAModule):
-#     """Set abstraction layer for preprocessing the individual point cloud."""
-#     def __init__(self, input_dim: int, point_dim: int, mlps: List[List[List[int]]],
-#                  npoint: List[int], radii: List[List[float]], nsamples: List[List[int]], PFE: Dict, 
-#                  batch_norm: bool = False, **_kwargs: Any):
-#         super().__init__()
-#         assert point_dim == 3
-#         assert len(mlps) == len(npoint) == len(radii) == len(nsamples)
-#         assert 0 < len(mlps) <= 2
+    def __init__(
+        self,
+        transformer_dict,
+        encoder_dim=256,
+        decoder_dim=256,
+        position_embedding="fourier",
+        num_queries=256,
+    ):
+        super().__init__()
 
-#         print("========LAYER TEST ==========\n")
-#         # print(PFE)
-#         print("POINT_SOURCE : ", PFE.POINT_SOURCE)
-#         print("NUM_KEYPOINTS : ", PFE.NUM_KEYPOINTS)
-#         print("NUM_OUTPUT_FEATURES : ", PFE.NUM_OUTPUT_FEATURES)
-#         print("SAMPLE_METHOD : ", PFE.SAMPLE_METHOD)
-#         print("FEATURES_SOURCE : ", PFE.FEATURES_SOURCE)
-#         print("SA_LAYER : ", PFE.SA_LAYER)
-#         print("========LAYER TEST ==========\n")
+        encoder_layer = TransformerEncoderLayer(
+            d_model=transformer_dict.enc_dim,
+            nhead=transformer_dict.enc_nhead,
+            dim_feedforward=transformer_dict.enc_ffn_dim,
+            dropout=transformer_dict.enc_dropout,
+            activation=transformer_dict.enc_activation,
+        )
+        encoder = TransformerEncoder(
+            encoder_layer=encoder_layer, num_layers=transformer_dict.enc_nlayers
+        )
+        self.encoder = encoder
 
-#         self._point_dim = point_dim
-#         input_feat_dim = input_dim - self._point_dim
-#         self._output_feat_dim = int(np.sum([x[-1] for x in mlps[-1]]))
 
-#         sa0_mlps = [[input_feat_dim, *x] for x in mlps[0]]
-#         self._sa0 = PointnetSAModuleMSG(
-#             npoint=npoint[0],
-#             radii=radii[0],
-#             nsamples=nsamples[0],
-#             mlps=sa0_mlps,
-#             use_xyz=True,
-#             bn=batch_norm
-#         )
+        decoder_layer = TransformerDecoderLayer(
+            d_model=transformer_dict.dec_dim,
+            nhead=transformer_dict.dec_nhead,
+            dim_feedforward=transformer_dict.dec_ffn_dim,
+            dropout=transformer_dict.dec_dropout,
+        )
+        decoder = TransformerDecoder(
+            decoder_layer, num_layers=transformer_dict.dec_nlayers, return_intermediate=True
+        )
 
-#         if len(npoint) == 2:
-#             sa1_mlps = [[*x] for x in mlps[1]]
-#             self._sa1 = PointnetSAModuleMSG(
-#                 npoint=npoint[1],
-#                 radii=radii[1],
-#                 nsamples=nsamples[1],
-#                 mlps=sa1_mlps,
-#                 use_xyz=True,
-#                 bn=batch_norm
-#             )
-#         else:
-#             self._sa1 = None
+        if hasattr(self.encoder, "masking_radius"):
+            hidden_dims = [encoder_dim]
+        else:
+            hidden_dims = [encoder_dim, encoder_dim]
+        self.encoder_to_decoder_projection = GenericMLP(
+            input_dim=encoder_dim,
+            hidden_dims=hidden_dims,
+            output_dim=decoder_dim,
+            norm_fn_name="bn1d",
+            activation="relu",
+            use_conv=True,
+            output_use_activation=True,
+            output_use_norm=True,
+            output_use_bias=False,
+        )
+        self.pos_embedding = PositionEmbeddingCoordsSine(
+            d_pos=decoder_dim, pos_type=position_embedding, normalize=True
+        )
+        self.query_projection = GenericMLP(
+            input_dim=decoder_dim,
+            hidden_dims=[decoder_dim],
+            output_dim=decoder_dim,
+            use_conv=True,
+            output_use_activation=True,
+            hidden_use_bias=True,
+        )
+        self.decoder = decoder
+        self.num_queries = num_queries
+        self.transformer_dict = transformer_dict
 
-#     def output_dim(self) -> int:
-#         return 3 + self._output_feat_dim
+    def get_query_embeddings(self, encoder_xyz, point_cloud_dims):
+        query_inds = pointnet2_stack_utils.furthest_point_sample(encoder_xyz, self.num_queries)
+        query_inds = query_inds.long()
+        query_xyz = [torch.gather(encoder_xyz[..., x], 1, query_inds) for x in range(3)]
+        query_xyz = torch.stack(query_xyz)
+        query_xyz = query_xyz.permute(1, 2, 0)
 
-#     def forward(self, clouds: torch.Tensor, *_args: Any) -> torch.Tensor:
-#         # print("input clouds : ", clouds.shape)
-#         xyz, features = split_features(clouds)
-#         xyz, features = self._sa0(xyz, features)
-#         if self._sa1 is not None:
-#             xyz, features = self._sa1(xyz, features)
+        # Gater op above can be replaced by the three lines below from the pointnet2 codebase
+        # xyz_flipped = encoder_xyz.transpose(1, 2).contiguous()
+        # query_xyz = gather_operation(xyz_flipped, query_inds.int())
+        # query_xyz = query_xyz.transpose(1, 2)
+        pos_embed = self.pos_embedding(query_xyz, input_range=point_cloud_dims)
+        query_embed = self.query_projection(pos_embed)
+        return query_xyz, query_embed
 
-#         clouds = merge_features(xyz, features)
+    def _break_up_pc(self, pc):
+        # pc may contain color/normals.
 
-#         # print("xyz : ", xyz.shape)
-#         # print("features : ", features.shape)
-#         # print("clouds : ", clouds.shape)
-#         # xyz :  torch.Size([10, 1024, 3])
-#         # features :  torch.Size([10, 64, 1024])
-#         # clouds :  torch.Size([10, 67, 1024])
-#         # xyz :  torch.Size([10, 1024, 3])
-#         # features :  torch.Size([10, 64, 1024])
-#         # clouds :  torch.Size([10, 67, 1024])
+        xyz = pc[..., 0:3].contiguous()
+        features = pc[..., 3:].transpose(1, 2).contiguous() if pc.size(-1) > 3 else None
+        return xyz, features
 
-#         return clouds
+    def run_encoder(self, pre_enc_xyz, pre_enc_features):
+        # xyz: batch x npoints x 3
+        # features: batch x channel x npoints
+        # inds: batch x npoints
+
+        # nn.MultiHeadAttention in encoder expects npoints x batch x channel features
+        pre_enc_features = pre_enc_features.permute(2, 0, 1)
+
+        # xyz points are in batch x npointx channel order
+        enc_xyz, enc_features, enc_inds = self.encoder(
+            pre_enc_features, xyz=pre_enc_xyz
+        )
+        return enc_xyz, enc_features
+
+    def get_box_predictions(self, query_xyz, point_cloud_dims, box_features):
+        """
+        Parameters:
+            query_xyz: batch x nqueries x 3 tensor of query XYZ coords
+            point_cloud_dims: List of [min, max] dims of point cloud
+                              min: batch x 3 tensor of min XYZ coords
+                              max: batch x 3 tensor of max XYZ coords
+            box_features: num_layers x num_queries x batch x channel
+        """
+        # box_features change to (num_layers x batch) x channel x num_queries
+        box_features = box_features.permute(0, 2, 3, 1)
+        num_layers, batch, channel, num_queries = (
+            box_features.shape[0],
+            box_features.shape[1],
+            box_features.shape[2],
+            box_features.shape[3],
+        )
+        box_features = box_features.reshape(num_layers * batch, channel, num_queries)
+
+        # mlp head outputs are (num_layers x batch) x noutput x nqueries, so transpose last two dims
+        cls_logits = self.mlp_heads["sem_cls_head"](box_features).transpose(1, 2)
+        center_offset = (
+            self.mlp_heads["center_head"](box_features).sigmoid().transpose(1, 2) - 0.5
+        )
+        size_normalized = (
+            self.mlp_heads["size_head"](box_features).sigmoid().transpose(1, 2)
+        )
+        angle_logits = self.mlp_heads["angle_cls_head"](box_features).transpose(1, 2)
+        angle_residual_normalized = self.mlp_heads["angle_residual_head"](
+            box_features
+        ).transpose(1, 2)
+
+        # reshape outputs to num_layers x batch x nqueries x noutput
+        cls_logits = cls_logits.reshape(num_layers, batch, num_queries, -1)
+        center_offset = center_offset.reshape(num_layers, batch, num_queries, -1)
+        size_normalized = size_normalized.reshape(num_layers, batch, num_queries, -1)
+        angle_logits = angle_logits.reshape(num_layers, batch, num_queries, -1)
+        angle_residual_normalized = angle_residual_normalized.reshape(
+            num_layers, batch, num_queries, -1
+        )
+        angle_residual = angle_residual_normalized * (
+            np.pi / angle_residual_normalized.shape[-1]
+        )
+
+        outputs = []
+        for l in range(num_layers):
+            # box processor converts outputs so we can get a 3D bounding box
+            (
+                center_normalized,
+                center_unnormalized,
+            ) = self.box_processor.compute_predicted_center(
+                center_offset[l], query_xyz, point_cloud_dims
+            )
+            angle_continuous = self.box_processor.compute_predicted_angle(
+                angle_logits[l], angle_residual[l]
+            )
+            size_unnormalized = self.box_processor.compute_predicted_size(
+                size_normalized[l], point_cloud_dims
+            )
+            box_corners = self.box_processor.box_parametrization_to_corners(
+                center_unnormalized, size_unnormalized, angle_continuous
+            )
+
+            # below are not used in computing loss (only for matching/mAP eval)
+            # we compute them with no_grad() so that distributed training does not complain about unused variables
+            with torch.no_grad():
+                (
+                    semcls_prob,
+                    objectness_prob,
+                ) = self.box_processor.compute_objectness_and_cls_prob(cls_logits[l])
+
+            box_prediction = {
+                "sem_cls_logits": cls_logits[l],
+                "center_normalized": center_normalized.contiguous(),
+                "center_unnormalized": center_unnormalized,
+                "size_normalized": size_normalized[l],
+                "size_unnormalized": size_unnormalized,
+                "angle_logits": angle_logits[l],
+                "angle_residual": angle_residual[l],
+                "angle_residual_normalized": angle_residual_normalized[l],
+                "angle_continuous": angle_continuous,
+                "objectness_prob": objectness_prob,
+                "sem_cls_prob": semcls_prob,
+                "box_corners": box_corners,
+            }
+            outputs.append(box_prediction)
+
+        # intermediate decoder layer outputs are only used during training
+        aux_outputs = outputs[:-1]
+        outputs = outputs[-1]
+
+        return {
+            "outputs": outputs,  # output from last layer of decoder
+            "aux_outputs": aux_outputs,  # output from intermediate layers of decoder
+        }
+
+    def forward(self, pre_enc_xyz, pre_enc_features):
+        # xyz: batch x npoints x 3
+        # features: batch x channel x npoints
+        # inds: batch x npoints
+
+        enc_xyz, enc_features= self.run_encoder(pre_enc_xyz, pre_enc_features)
+        enc_features = self.encoder_to_decoder_projection(
+            enc_features.permute(1, 2, 0)
+        ).permute(2, 0, 1)
+        # encoder features: npoints x batch x channel
+        # encoder xyz: npoints x batch x 3
+
+        # min_max_xyz = pre_enc_xyz.reshape(-1, pre_enc_xyz.shape[2]).contiguous()
+        # print(pre_enc_xyz.shape)
+        # Find the minimum and maximum value at each position in the tensor
+        min_xyz = pre_enc_xyz.min(dim=1)[0]
+        max_xyz = pre_enc_xyz.max(dim=1)[0]
+        # print(min_xyz)
+        # print(max_xyz)
+
+        point_cloud_dims = [
+            min_xyz,
+            max_xyz,
+        ]
+
+        query_xyz, query_embed = self.get_query_embeddings(enc_xyz, point_cloud_dims)
+        # query_embed: batch x channel x npoint
+        enc_pos = self.pos_embedding(enc_xyz, input_range=point_cloud_dims)
+
+        # decoder expects: npoints x batch x channel
+        enc_pos = enc_pos.permute(2, 0, 1)
+        query_embed = query_embed.permute(2, 0, 1)
+        # print("enc_pos : ", enc_pos.shape)
+        # print("query_embed : ", query_embed.shape)
+
+        tgt = torch.zeros_like(query_embed)
+        dec_features = self.decoder(
+            tgt, enc_features, query_pos=query_embed, pos=enc_pos
+        )[0]
+        # print("dec_features : ", dec_features.shape)
+
+        #  dec_features: num_layers x num_queries x batch x channel
+
+        # box_features change to batch x (num_layers x channel) x num_queries
+        dec_features = dec_features.permute(2, 0, 3, 1)
+        batch, num_layers, channel, num_queries = (
+            dec_features.shape[0],
+            dec_features.shape[1],
+            dec_features.shape[2],
+            dec_features.shape[3],
+        )
+        dec_features = dec_features.reshape( batch, num_layers * channel, num_queries)
+
+
+        # box_predictions = self.get_box_predictions(
+        #     query_xyz, point_cloud_dims, box_features
+        # )
+        return dec_features
 
 
 class GroupingModule(abc.ABC, nn.Module):
@@ -734,7 +939,7 @@ class MotionEmbeddingBase(nn.Module):
     _grouping: GroupingModule
 
     def __init__(self, input_dim: int, point_dim: int, k: int, radius: float, mlp: List[int],
-                attention: Dict, transformer: Dict, append_features: bool = True, batch_norm: bool = False, **_kwargs: Any):
+                transformer: Dict, append_features: bool = True, batch_norm: bool = False, **_kwargs: Any):
         super().__init__()
         # print("========Embedding LAYER TEST ==========\n")
 
@@ -742,13 +947,11 @@ class MotionEmbeddingBase(nn.Module):
         self._append_features = append_features
         self._k = k
         self._input_dim = input_dim
-        self.attention_dict = attention
         self.transformer_dict = transformer
         print("point_dim + 2 * (input_dim - point_dim) : " , point_dim + 2 * (input_dim - point_dim))
-        if attention.use_attention :
-            self._attention = SelfAttention(attention.NUM_KEYPOINTS, point_dim + 2 * (input_dim - point_dim))
-        elif transformer.use_transformer :
-            self._transformer = Transformer(transformer.NUM_KEYPOINTS, point_dim + 2 * (input_dim - point_dim), transformer.NUM_LAYER, transformer.NUM_HEAD)
+        # self._transformer = Transformer(transformer.NUM_KEYPOINTS, point_dim + 2 * (input_dim - point_dim), transformer.NUM_LAYER, transformer.NUM_HEAD)
+        self._transformer = ModelTransformer(transformer, encoder_dim=transformer.enc_dim, decoder_dim=transformer.dec_dim)
+
         if k == 0:
             self._grouping = GlobalGrouping()
         else:
@@ -760,28 +963,24 @@ class MotionEmbeddingBase(nn.Module):
             mlp_layers = [input_dim, *mlp]
         # print("mlp_layers : ", mlp_layers) # [3 + 64 x 2, 128, 128, 256]
         self._conv = Conv1dMultiLayer(mlp_layers, batch_norm=batch_norm)
+
         self._radius = radius
 
         # print("========Embedding LAYER TEST ==========\n")
 
     def output_dim(self) -> int:
-        if(self.attention_dict.use_attention) : 
-            return self._point_dim + 2 * (self._input_dim - self._point_dim)
-        elif(self.transformer_dict.use_transformer) : 
-            return self._point_dim + 2 * (self._input_dim - self._point_dim)
+        return self._point_dim + 2 * (self._input_dim - self._point_dim)
 
-        return self._point_dim + self._conv.output_dim()
 
     def forward(self, clouds0: torch.Tensor, clouds1: torch.Tensor) -> torch.Tensor:
         # print("========Embedding LAYER TEST ==========\n")
-
         # group
         pts0, pts1, group_pts0, group_pts1 = self._grouping(clouds0, clouds1)
 
         # merge
         pos_diff = group_pts1[:, :, :self._point_dim] - group_pts0[:, :, :self._point_dim]
-        # print("pts0 : " , pts0.shape)
-        # print("pos_diff : " , pos_diff.shape)
+        # print("pts0 : " , pts0)
+        # print("pos_diff : " , pos_diff)
         # print("group_pts0[:, :, self._point_dim:] : " , group_pts0[:, :, self._point_dim:].shape)
         # print("group_pts1[:, :, self._point_dim:] : " , group_pts1[:, :, self._point_dim:].shape)
         # print("group_pts0 : " , group_pts0.shape)
@@ -819,18 +1018,24 @@ class MotionEmbeddingBase(nn.Module):
         # print("out2 : " , out.shape)
 
         # TODO : self-attention layer here
-        if self.attention_dict.use_attention :
-            weighted_sum = self._attention(out)
-            weighted_sum = weighted_sum.transpose(1, 2).contiguous()
-            # print("weighted_sum : ", weighted_sum.shape)
-            # print("attention_weights : ", attention_weights.shape)
-            return weighted_sum
+        trans_xyz = out[:, :self._point_dim,:].transpose(1,2).contiguous()
+        trans_feature = out[:, self._point_dim:,:].contiguous()
+        # print("xyz", trans_xyz.shape)
+        # print("feature", trans_feature.shape)
+        # xyz: batch x npoints x 3
+        # features: batch x channel x npoints
+        # print(trans_xyz)
+        dec_feature = self._transformer(trans_xyz, trans_feature)
+        dec_feature = dec_feature.transpose(1, 2).contiguous()
+        # print("dec_feature : ", dec_feature.shape)
 
-        elif self.transformer_dict.use_transformer :
-            transformer_output = self._transformer(out)
-            print(transformer_output.shape)
-            # weighted_sum = weighted_sum.transpose(1, 2).contiguous()
-            return transformer_output
+        trans_xyz = trans_xyz.transpose(1,2).contiguous()
+        # print("xyz", trans_xyz.shape)
+
+        trans_out = torch.cat((trans_xyz, dec_feature), dim=1)
+        # print("trans_out", trans_out.shape)
+
+        # return transformer_output
 
         # pos_diff :  torch.Size([2560, 20, 3])
         # group_pts0[:, :, self._point_dim:] :  torch.Size([2560, 20, 64])
@@ -840,9 +1045,9 @@ class MotionEmbeddingBase(nn.Module):
         # merged_feat :  torch.Size([2560, 256, 20])
         # feat :  torch.Size([2560, 256])
         # out :  torch.Size([2560, 259])
-        # out2 :  torch.Size([5, 259, 512])
+        # out2 :  torch.Size([5, 259, 512]) batch, 3+2c , keypoints
 
-        return out
+        return trans_out
 
 
 class MotionEmbedding(DROPVSAModule):

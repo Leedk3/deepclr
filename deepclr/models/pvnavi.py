@@ -521,7 +521,7 @@ class VoxelSetAbstraction(PVNAVIModule):
         # batch_dict['point_coords'] = point_coords[:, :3] # (BxN, 4)
 
         point_features = point_features.view(batch_size, self.PFE.NUM_KEYPOINTS, -1)
-        point_xyz = point_coords[:, :3].view(batch_size, -1, self._point_dim)
+        point_xyz = point_coords[:, 1:4].view(batch_size, -1, self._point_dim)
 
         # print("point_features : ", point_features.shape)
         # print("point_xyz : ", point_xyz.shape)

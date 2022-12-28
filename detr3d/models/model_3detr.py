@@ -5,13 +5,13 @@ from functools import partial
 import numpy as np
 import torch
 import torch.nn as nn
-from third_party.pointnet2.pointnet2_modules import PointnetSAModuleVotes
-from third_party.pointnet2.pointnet2_utils import furthest_point_sample
-from utils.pc_util import scale_points, shift_scale_points
+from detr3d.third_party.pointnet2.pointnet2_modules import PointnetSAModuleVotes
+from detr3d.third_party.pointnet2.pointnet2_utils import furthest_point_sample
+from detr3d.utils.pc_util import scale_points, shift_scale_points
 
-from models.helpers import GenericMLP
-from models.position_embedding import PositionEmbeddingCoordsSine
-from models.transformer import (MaskedTransformerEncoder, TransformerDecoder,
+from detr3d.models.helpers import GenericMLP
+from detr3d.models.position_embedding import PositionEmbeddingCoordsSine
+from detr3d.models.transformer import (MaskedTransformerEncoder, TransformerDecoder,
                                 TransformerDecoderLayer, TransformerEncoder,
                                 TransformerEncoderLayer)
 
