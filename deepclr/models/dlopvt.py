@@ -890,6 +890,20 @@ class ModelTransformer(TransformerModule):
         self.num_queries = num_queries
         self.transformer_dict = transformer_dict
 
+        mlp_func = partial(
+            GenericMLP,
+            norm_fn_name="bn1d",
+            activation="relu",
+            use_conv=True,
+            hidden_dims=[decoder_dim, decoder_dim],
+            dropout=transformer_dict.mlp_dropout,
+            input_dim=decoder_dim,
+        )
+
+        # Semantic class of the box
+        self.pose_head = mlp_func(output_dim=256)
+
+
     def get_query_embeddings(self, encoder_xyz, point_cloud_dims):
         query_inds = pointnet2_stack_utils.furthest_point_sample(encoder_xyz, self.num_queries)
         query_inds = query_inds.long()
@@ -946,82 +960,73 @@ class ModelTransformer(TransformerModule):
         box_features = box_features.reshape(num_layers * batch, channel, num_queries)
 
         # mlp head outputs are (num_layers x batch) x noutput x nqueries, so transpose last two dims
-        cls_logits = self.mlp_heads["sem_cls_head"](box_features).transpose(1, 2)
-        center_offset = (
-            self.mlp_heads["center_head"](box_features).sigmoid().transpose(1, 2) - 0.5
-        )
-        size_normalized = (
-            self.mlp_heads["size_head"](box_features).sigmoid().transpose(1, 2)
-        )
-        angle_logits = self.mlp_heads["angle_cls_head"](box_features).transpose(1, 2)
-        angle_residual_normalized = self.mlp_heads["angle_residual_head"](
-            box_features
-        ).transpose(1, 2)
+        pose_logits = self.pose_head(box_features).transpose(1, 2)
+        # center_offset = (
+        #     self.mlp_heads["center_head"](box_features).sigmoid().transpose(1, 2) - 0.5
+        # )
+        # size_normalized = (
+        #     self.mlp_heads["size_head"](box_features).sigmoid().transpose(1, 2)
+        # )
+        # angle_logits = self.mlp_heads["angle_cls_head"](box_features).transpose(1, 2)
+        # angle_residual_normalized = self.mlp_heads["angle_residual_head"](
+        #     box_features
+        # ).transpose(1, 2)
 
         # reshape outputs to num_layers x batch x nqueries x noutput
-        cls_logits = cls_logits.reshape(num_layers, batch, num_queries, -1)
-        center_offset = center_offset.reshape(num_layers, batch, num_queries, -1)
-        size_normalized = size_normalized.reshape(num_layers, batch, num_queries, -1)
-        angle_logits = angle_logits.reshape(num_layers, batch, num_queries, -1)
-        angle_residual_normalized = angle_residual_normalized.reshape(
-            num_layers, batch, num_queries, -1
-        )
-        angle_residual = angle_residual_normalized * (
-            np.pi / angle_residual_normalized.shape[-1]
-        )
+        pose_logits = pose_logits.reshape(num_layers, batch, num_queries, -1)
+        # center_offset = center_offset.reshape(num_layers, batch, num_queries, -1)
+        # size_normalized = size_normalized.reshape(num_layers, batch, num_queries, -1)
+        # angle_logits = angle_logits.reshape(num_layers, batch, num_queries, -1)
+        # angle_residual_normalized = angle_residual_normalized.reshape(
+        #     num_layers, batch, num_queries, -1
+        # )
+        # angle_residual = angle_residual_normalized * (
+        #     np.pi / angle_residual_normalized.shape[-1]
+        # )
 
         outputs = []
         for l in range(num_layers):
-            # box processor converts outputs so we can get a 3D bounding box
-            (
-                center_normalized,
-                center_unnormalized,
-            ) = self.box_processor.compute_predicted_center(
-                center_offset[l], query_xyz, point_cloud_dims
-            )
-            angle_continuous = self.box_processor.compute_predicted_angle(
-                angle_logits[l], angle_residual[l]
-            )
-            size_unnormalized = self.box_processor.compute_predicted_size(
-                size_normalized[l], point_cloud_dims
-            )
-            box_corners = self.box_processor.box_parametrization_to_corners(
-                center_unnormalized, size_unnormalized, angle_continuous
-            )
-
-            # below are not used in computing loss (only for matching/mAP eval)
-            # we compute them with no_grad() so that distributed training does not complain about unused variables
-            with torch.no_grad():
-                (
-                    semcls_prob,
-                    objectness_prob,
-                ) = self.box_processor.compute_objectness_and_cls_prob(cls_logits[l])
+            # # box processor converts outputs so we can get a 3D bounding box
+            # (
+            #     center_normalized,
+            #     center_unnormalized,
+            # ) = self.box_processor.compute_predicted_center(
+            #     center_offset[l], query_xyz, point_cloud_dims
+            # )
+            # angle_continuous = self.box_processor.compute_predicted_angle(
+            #     angle_logits[l], angle_residual[l]
+            # )
+            # size_unnormalized = self.box_processor.compute_predicted_size(
+            #     size_normalized[l], point_cloud_dims
+            # )
+            # box_corners = self.box_processor.box_parametrization_to_corners(
+            #     center_unnormalized, size_unnormalized, angle_continuous
+            # )
 
             box_prediction = {
-                "sem_cls_logits": cls_logits[l],
-                "center_normalized": center_normalized.contiguous(),
-                "center_unnormalized": center_unnormalized,
-                "size_normalized": size_normalized[l],
-                "size_unnormalized": size_unnormalized,
-                "angle_logits": angle_logits[l],
-                "angle_residual": angle_residual[l],
-                "angle_residual_normalized": angle_residual_normalized[l],
-                "angle_continuous": angle_continuous,
-                "objectness_prob": objectness_prob,
-                "sem_cls_prob": semcls_prob,
-                "box_corners": box_corners,
+                "pose_logits": pose_logits[l],
+                # "center_normalized": center_normalized.contiguous(),
+                # "center_unnormalized": center_unnormalized,
+                # "size_normalized": size_normalized[l],
+                # "size_unnormalized": size_unnormalized,
+                # "angle_logits": angle_logits[l],
+                # "angle_residual": angle_residual[l],
+                # "angle_residual_normalized": angle_residual_normalized[l],
+                # "angle_continuous": angle_continuous,
+                # "objectness_prob": objectness_prob,
+                # "sem_cls_prob": semcls_prob,
+                # "box_corners": box_corners,
             }
             outputs.append(box_prediction)
 
-        print(outputs)
         # intermediate decoder layer outputs are only used during training
         aux_outputs = outputs[:-1]
         outputs = outputs[-1]
-
-        return {
-            "outputs": outputs,  # output from last layer of decoder
-            "aux_outputs": aux_outputs,  # output from intermediate layers of decoder
-        }
+        return outputs
+        # return {
+        #     "outputs": outputs,  # output from last layer of decoder
+        #     "aux_outputs": aux_outputs,  # output from intermediate layers of decoder
+        # }
 
     def forward(self, pre_enc_xyz, pre_enc_features):
         # xyz: batch x npoints x 3
@@ -1029,8 +1034,8 @@ class ModelTransformer(TransformerModule):
         # inds: batch x npoints
 
         enc_xyz, enc_features= self.run_encoder(pre_enc_xyz, pre_enc_features)
-        print("enc_xyz : ",enc_xyz.shape)
-        print("enc_features : ",enc_features.shape) 
+        # print("enc_xyz : ",enc_xyz.shape)
+        # print("enc_features : ",enc_features.shape) 
         enc_features = self.encoder_to_decoder_projection(
             enc_features.permute(1, 2, 0)
         ).permute(2, 0, 1)
@@ -1057,14 +1062,14 @@ class ModelTransformer(TransformerModule):
         # decoder expects: npoints x batch x channel
         enc_pos = enc_pos.permute(2, 0, 1)
         query_embed = query_embed.permute(2, 0, 1)
-        print("enc_pos : ", enc_pos.shape)
-        print("query_embed : ", query_embed.shape)
+        # print("enc_pos : ", enc_pos.shape)
+        # print("query_embed : ", query_embed.shape)
 
         tgt = torch.zeros_like(query_embed)
         dec_features = self.decoder(
             tgt, enc_features, query_pos=query_embed, pos=enc_pos
         )[0]
-        print("dec_features : ", dec_features.shape)
+        # print("dec_features : ", dec_features.shape)
 
         # #  dec_features: num_layers x num_queries x batch x channel
 
@@ -1079,10 +1084,10 @@ class ModelTransformer(TransformerModule):
         # dec_features = dec_features.reshape( batch, num_layers * channel, num_queries)
         # print("dec_features : ", dec_features)
 
-        pose_predictions = self.get_box_predictions(
+        prediction = self.get_box_predictions(
             query_xyz, point_cloud_dims, dec_features
         )
-        return dec_features
+        return prediction
 
 class TransformerBase(nn.Module):
     _transformer: ModelTransformer
@@ -1110,17 +1115,18 @@ class TransformerBase(nn.Module):
         # # xyz: batch x npoints x 3
         # # features: batch x channel x npoints
         # # print(trans_xyz)
-        dec_feature = self._transformer(trans_xyz, trans_feature)
-        # dec_feature = dec_feature.transpose(1, 2).contiguous()
-        print("dec_feature : ", dec_feature.shape)
+        prediction = self._transformer(trans_xyz, trans_feature)
 
+        # print("pose_logits : ", prediction["pose_logits"].shape)
+
+        # dec_feature = dec_feature.transpose(1, 2).contiguous()
         # trans_xyz = trans_xyz.transpose(1,2).contiguous()
         # print("xyz", trans_xyz.shape)
 
         # trans_out = torch.cat((trans_xyz, dec_feature), dim=1)
         # print("trans_out", trans_out.shape)
 
-        return dec_feature
+        return prediction["pose_logits"]
 
 
 
@@ -1378,12 +1384,10 @@ class DLOPVT(BaseModel):
 
         if transform_layer is None:
             self._cloud_layers = nn.Sequential(cloud_feat_layer)
-            self._merge_layers = nn.Sequential(merge_layer, transformer_layer)
-            self._transformer_layers = nn.Sequential(transformer_layer, output_layer)
+            self._merge_layers = nn.Sequential(merge_layer, transformer_layer, output_layer)
         else:
             self._cloud_layers = nn.Sequential(transform_layer, cloud_feat_layer)
-            self._merge_layers = nn.Sequential(merge_layer, transformer_layer)
-            self._transformer_layers = nn.Sequential(transformer_layer, output_layer)
+            self._merge_layers = nn.Sequential(merge_layer, transformer_layer, output_layer)
 
         if loss is not None:
             if isinstance(loss, list):
