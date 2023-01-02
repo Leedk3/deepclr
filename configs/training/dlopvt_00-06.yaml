@@ -1,4 +1,4 @@
-extends: 'dropvsa_base.yaml'
+extends: 'dlopvt_base.yaml'
 
 identifier: kitti_00-06
 

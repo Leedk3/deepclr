@@ -39,8 +39,8 @@ from .helper import Conv1dMultiLayer, LinearMultiLayer
 # my note :
 # change point feature extractor -> voxel feature extractor (same as PV_RCNN network)
 
-class DROPVSAModule(nn.Module, metaclass=abc.ABCMeta):
-    """Abstract base class for DROPVSA modules."""
+class DLOPVTModule(nn.Module, metaclass=abc.ABCMeta):
+    """Abstract base class for DLOPVT modules."""
     def __init__(self):
         super().__init__()
 
@@ -286,7 +286,7 @@ class VoxelBackBone8xBase(nn.Module):
         return batch_dict
 
 
-class VoxelSetAbstraction(DROPVSAModule):
+class VoxelSetAbstraction(DLOPVTModule):
     voxel_backbone_8x : BackBoneModule
     def __init__(self, input_dim: int, point_dim: int, 
                  PFE: Dict, BACKBONE_3D : Dict, 
@@ -697,6 +697,9 @@ class MotionEmbeddingBase(nn.Module):
         # print("mlp_layers : ", mlp_layers) # [3 + 64 x 2, 128, 128, 256]
         self._conv = Conv1dMultiLayer(mlp_layers, batch_norm=batch_norm)
 
+        pts_diff_mlp_layers = [point_dim , *mlp]
+        self._pts_diff_conv = Conv1dMultiLayer(pts_diff_mlp_layers, batch_norm=batch_norm)
+
         self._radius = radius
 
         # print("========Embedding LAYER TEST ==========\n")
@@ -713,7 +716,7 @@ class MotionEmbeddingBase(nn.Module):
         # merge
         pos_diff = group_pts1[:, :, :self._point_dim] - group_pts0[:, :, :self._point_dim]
         # print("pts0 : " , pts0)
-        # print("pos_diff : " , pos_diff)
+        # print("pos_diff : " , pos_diff.shape)
         # print("group_pts0[:, :, self._point_dim:] : " , group_pts0[:, :, self._point_dim:].shape)
         # print("group_pts1[:, :, self._point_dim:] : " , group_pts1[:, :, self._point_dim:].shape)
         # print("group_pts0 : " , group_pts0.shape)
@@ -731,6 +734,7 @@ class MotionEmbeddingBase(nn.Module):
         merged = merged.transpose(1, 2)
         # print("merged 2: " , merged.shape)
         merged_feat = self._conv(merged)
+        # print("merged_feat : " , merged_feat.shape)
 
         # radius
         if self._radius > 0.0:
@@ -738,12 +742,22 @@ class MotionEmbeddingBase(nn.Module):
             mask = pos_diff_norm >= self._radius
             merged_feat.masked_scatter_(mask.unsqueeze(1), merged_feat.new_zeros(merged_feat.shape))
 
+        # print("merged_feat 2: " , merged_feat.shape)
         feat, _ = torch.max(merged_feat, dim=2)
         # print("feat : " , feat.shape)
 
         # append features to pts1 pos and separate batches
-        out = torch.cat((pts0[:, :self._point_dim], feat), dim=1)
+        # out = torch.cat((pts0[:, :self._point_dim], feat), dim=1) #origin out
         # print("out : " , out.shape)
+
+        # pts diff 
+        pos_diff = pos_diff.transpose(1, 2)
+        # print("pos_diff 2: " , pos_diff.shape)
+        new_pos_diff, _ = torch.max(pos_diff, dim=2)
+        # print("pos_diff : ", pos_diff.shape)
+        # print("new_pos_diff : ", new_pos_diff.shape)
+        out = torch.cat((new_pos_diff, feat), dim=1) #test with diff
+
 
         out = out.view(clouds0.shape[0], -1, out.shape[1]).transpose(1, 2).contiguous()
         # print("(self._input_dim - self._point_dim) : ", (self._input_dim - self._point_dim))
@@ -776,7 +790,7 @@ class MotionEmbeddingBase(nn.Module):
         return out
 
 
-class MotionEmbedding(DROPVSAModule):
+class MotionEmbedding(DLOPVTModule):
     """Motion embedding for point cloud batch with sorting [template1, template2, ..., source1, source2, ...]."""
     def __init__(self, **kwargs: Any):
         super().__init__()
@@ -787,16 +801,19 @@ class MotionEmbedding(DROPVSAModule):
 
     def forward(self, clouds: torch.Tensor) -> torch.Tensor:
         batch_dim = int(clouds.shape[0] / 2)
-
-        embedded_flow = self._embedding(clouds[:batch_dim, ...],
+        return self._embedding(clouds[:batch_dim, ...],
                                clouds[batch_dim:, ...])
-        print(embedded_flow.shape)
 
-        return embedded_flow
+class TransformerModule(abc.ABC, nn.Module):
+    """Abstract base class for 3d points transformer."""
+    def __init__(self):
+        super().__init__()
 
+    @abc.abstractmethod
+    def forward(self, cloud0: torch.Tensor) -> torch.Tensor:
+        raise NotImplementedError
 
-
-class ModelTransformer(nn.Module):
+class ModelTransformer(TransformerModule):
     """
     Main ModelTransformer model. Consists of the following learnable sub-models
     - encoder: series of self-attention blocks to extract point features
@@ -996,6 +1013,7 @@ class ModelTransformer(nn.Module):
             }
             outputs.append(box_prediction)
 
+        print(outputs)
         # intermediate decoder layer outputs are only used during training
         aux_outputs = outputs[:-1]
         outputs = outputs[-1]
@@ -1011,6 +1029,8 @@ class ModelTransformer(nn.Module):
         # inds: batch x npoints
 
         enc_xyz, enc_features= self.run_encoder(pre_enc_xyz, pre_enc_features)
+        print("enc_xyz : ",enc_xyz.shape)
+        print("enc_features : ",enc_features.shape) 
         enc_features = self.encoder_to_decoder_projection(
             enc_features.permute(1, 2, 0)
         ).permute(2, 0, 1)
@@ -1037,35 +1057,35 @@ class ModelTransformer(nn.Module):
         # decoder expects: npoints x batch x channel
         enc_pos = enc_pos.permute(2, 0, 1)
         query_embed = query_embed.permute(2, 0, 1)
-        # print("enc_pos : ", enc_pos.shape)
-        # print("query_embed : ", query_embed.shape)
+        print("enc_pos : ", enc_pos.shape)
+        print("query_embed : ", query_embed.shape)
 
         tgt = torch.zeros_like(query_embed)
         dec_features = self.decoder(
             tgt, enc_features, query_pos=query_embed, pos=enc_pos
         )[0]
-        # print("dec_features : ", dec_features.shape)
+        print("dec_features : ", dec_features.shape)
 
-        #  dec_features: num_layers x num_queries x batch x channel
+        # #  dec_features: num_layers x num_queries x batch x channel
 
-        # box_features change to batch x (num_layers x channel) x num_queries
-        dec_features = dec_features.permute(2, 0, 3, 1)
-        batch, num_layers, channel, num_queries = (
-            dec_features.shape[0],
-            dec_features.shape[1],
-            dec_features.shape[2],
-            dec_features.shape[3],
-        )
-        dec_features = dec_features.reshape( batch, num_layers * channel, num_queries)
-
-
-        # box_predictions = self.get_box_predictions(
-        #     query_xyz, point_cloud_dims, box_features
+        # # box_features change to batch x (num_layers x channel) x num_queries
+        # dec_features = dec_features.permute(2, 0, 3, 1)
+        # batch, num_layers, channel, num_queries = (
+        #     dec_features.shape[0],
+        #     dec_features.shape[1],
+        #     dec_features.shape[2],
+        #     dec_features.shape[3],
         # )
+        # dec_features = dec_features.reshape( batch, num_layers * channel, num_queries)
+        # print("dec_features : ", dec_features)
+
+        pose_predictions = self.get_box_predictions(
+            query_xyz, point_cloud_dims, dec_features
+        )
         return dec_features
 
-
 class TransformerBase(nn.Module):
+    _transformer: ModelTransformer
     def __init__(self, input_dim: int, point_dim: int,
                 transformer_dict: Dict, append_features: bool = True, batch_norm: bool = False, **_kwargs: Any):
         super().__init__()
@@ -1076,8 +1096,7 @@ class TransformerBase(nn.Module):
         self._transformer = ModelTransformer(transformer_dict, encoder_dim=transformer_dict.enc_dim, decoder_dim=transformer_dict.dec_dim)
 
     def output_dim(self) -> int:
-        return self._input_dim
-
+        return self._input_dim - self._point_dim
 
     def forward(self, embedded_flow: torch.Tensor) -> torch.Tensor:
         # # TODO : self-attention layer here
@@ -1085,29 +1104,31 @@ class TransformerBase(nn.Module):
         trans_feature = embedded_flow[:, self._point_dim:,:].contiguous()
         # print("xyz", trans_xyz.shape)
         # print("feature", trans_feature.shape)
+        # xyz torch.Size([2, 4096, 3])
+        # feature torch.Size([2, 256, 4096])
+
         # # xyz: batch x npoints x 3
         # # features: batch x channel x npoints
         # # print(trans_xyz)
         dec_feature = self._transformer(trans_xyz, trans_feature)
-        dec_feature = dec_feature.transpose(1, 2).contiguous()
-        # print("dec_feature : ", dec_feature.shape)
+        # dec_feature = dec_feature.transpose(1, 2).contiguous()
+        print("dec_feature : ", dec_feature.shape)
 
         # trans_xyz = trans_xyz.transpose(1,2).contiguous()
         # print("xyz", trans_xyz.shape)
 
-        trans_out = torch.cat((trans_xyz, dec_feature), dim=1)
+        # trans_out = torch.cat((trans_xyz, dec_feature), dim=1)
         # print("trans_out", trans_out.shape)
 
-        return embedded_flow
+        return dec_feature
 
 
 
-class Transformer(DROPVSAModule):
+class Transformer(DLOPVTModule):
     """Transformer encoder-decoder block for attention mechanism [embedded_flow]."""
     def __init__(self, **kwargs: Any):
         super().__init__()
         self._transformer = TransformerBase(**kwargs)
-
     def output_dim(self):
         return self._transformer.output_dim()
 
@@ -1115,8 +1136,7 @@ class Transformer(DROPVSAModule):
         return self._transformer(clouds)
 
 
-
-class OutputSimple(DROPVSAModule):
+class OutputSimple(DLOPVTModule):
     """Simple output module with mini-PointNet and fully connected layers."""
     def __init__(self, input_dim: int, label_type: LabelType, mlp: List[int], linear: List[int],
                  batch_norm: bool = False, dropout: bool = False, **_kwargs: Any):
@@ -1224,7 +1244,7 @@ class TransformLossCalculation(nn.Module):
             return tr_loss
 
 
-class DROPVSALoss(DROPVSAModule, metaclass=abc.ABCMeta):
+class DLOPVTLoss(DLOPVTModule, metaclass=abc.ABCMeta):
     """Abstract base class for loss calculation modules."""
     def __init__(self):
         super().__init__()
@@ -1237,7 +1257,7 @@ class DROPVSALoss(DROPVSAModule, metaclass=abc.ABCMeta):
         raise NotImplementedError
 
 
-class TransformLoss(DROPVSALoss):
+class TransformLoss(DLOPVTLoss):
     """Weighted transform loss with fixed weights."""
     def __init__(self, label_type: LabelType, p: int, sx: float, sq: float, **_kwargs: Any):
         super().__init__()
@@ -1258,7 +1278,7 @@ class TransformLoss(DROPVSALoss):
         return loss
 
 
-class TransformUncertaintyLoss(DROPVSALoss):
+class TransformUncertaintyLoss(DLOPVTLoss):
     """Weighted transform loss with epistemic uncertainty."""
     def __init__(self, label_type: LabelType, p: int, sx: float, sq: float, **_kwargs: Any):
         super().__init__()
@@ -1279,7 +1299,7 @@ class TransformUncertaintyLoss(DROPVSALoss):
         return loss
 
 
-class AccumulatedLoss(DROPVSALoss):
+class AccumulatedLoss(DLOPVTLoss):
     """Accumulated loss of multiple loss types."""
     def __init__(self, modules: List[torch.nn.Module]):
         super().__init__()
@@ -1299,22 +1319,22 @@ class AccumulatedLoss(DROPVSALoss):
         return torch.stack(loss_values, dim=0).sum()
 
 
-def init_module(cfg: Config, *args: Any, **kwargs: Any) -> DROPVSAModule:
-    """Initialize DROPVSAModule from config."""
-    return factory(DROPVSAModule, cfg.name, *args, **cfg.params, **kwargs)
+def init_module(cfg: Config, *args: Any, **kwargs: Any) -> DLOPVTModule:
+    """Initialize DLOPVTModule from config."""
+    return factory(DLOPVTModule, cfg.name, *args, **cfg.params, **kwargs)
 
 
-def init_loss_module(cfg: Config, label_type: LabelType, *args: Any, **kwargs: Any) -> DROPVSALoss:
-    """Initialize DROPVSALoss from config."""
-    return factory(DROPVSALoss, cfg.name, *args, label_type=label_type, **cfg.params, **kwargs)
+def init_loss_module(cfg: Config, label_type: LabelType, *args: Any, **kwargs: Any) -> DLOPVTLoss:
+    """Initialize DLOPVTLoss from config."""
+    return factory(DLOPVTLoss, cfg.name, *args, label_type=label_type, **cfg.params, **kwargs)
 
 
-def init_optional_module(cfg: Optional[Config], *args: Any, **kwargs: Any) -> Optional[DROPVSAModule]:
-    """Initialize optional DROPVSAModule from config."""
+def init_optional_module(cfg: Optional[Config], *args: Any, **kwargs: Any) -> Optional[DLOPVTModule]:
+    """Initialize optional DLOPVTModule from config."""
     if cfg is None:
         return None
     else:
-        return factory(DROPVSAModule, cfg.name, *args, **cfg.params, **kwargs)
+        return factory(DLOPVTModule, cfg.name, *args, **cfg.params, **kwargs)
 
 
 def split_output(output: Any) -> Tuple[Any, Any]:
@@ -1329,9 +1349,9 @@ def split_output(output: Any) -> Tuple[Any, Any]:
     return data, aux
 
 
-class DROPVSA(BaseModel):
-    """Main DROPVSA network."""
-    _loss_layer: Optional[DROPVSALoss]
+class DLOPVT(BaseModel):
+    """Main DLOPVT network."""
+    _loss_layer: Optional[DLOPVTLoss]
 
     def __init__(self, input_dim: int, label_type: LabelType, cloud_features: Config,
                  merge: Config, transformer: Config, output: Config, transform: Optional[Config] = None,
@@ -1358,10 +1378,12 @@ class DROPVSA(BaseModel):
 
         if transform_layer is None:
             self._cloud_layers = nn.Sequential(cloud_feat_layer)
-            self._merge_layers = nn.Sequential(merge_layer, output_layer)
+            self._merge_layers = nn.Sequential(merge_layer, transformer_layer)
+            self._transformer_layers = nn.Sequential(transformer_layer, output_layer)
         else:
             self._cloud_layers = nn.Sequential(transform_layer, cloud_feat_layer)
-            self._merge_layers = nn.Sequential(merge_layer, output_layer)
+            self._merge_layers = nn.Sequential(merge_layer, transformer_layer)
+            self._transformer_layers = nn.Sequential(transformer_layer, output_layer)
 
         if loss is not None:
             if isinstance(loss, list):

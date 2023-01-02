@@ -12,7 +12,7 @@ model:
   point_dim: 3
   label_type: pose3d_dual_quat
 
-  model_type: dropvsa
+  model_type: dlopvt
   params:
     batch_norm: False
     dropout: 1.0
@@ -20,10 +20,6 @@ model:
     cloud_features:
       name: VoxelSetAbstraction #SetAbstraction
       params:
-        # npoint: [512]
-        # radii: [[0.5, 1.0]]
-        # nsamples: [[512, 1024]]
-        # mlps: [[[16, 16, 32], [16, 16, 32]]]
         BACKBONE_3D:
           NAME : VoxelBackBone8x
 
@@ -67,19 +63,14 @@ model:
     merge:
       name: MotionEmbedding
       params:
-        k: 20
-        radius: 10.0
+        k: 10
+        radius: 5.0
         mlp: [128, 128, 256]
-        # attention:
-        #   use_attention: False
-        #   NUM_KEYPOINTS : 1024 #this should be same number above
-        #                        # NUM_KEYPOINTS > point_dim + 2 * (input_dim - point_dim)
 
     transformer:
       name: Transformer
       params:
         transformer_dict :
-          use_transformer: True
           NUM_LAYER : 3
           NUM_HEAD :  4
           NUM_KEYPOINTS : 4096 #this should be same number above
