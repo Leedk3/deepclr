@@ -21,6 +21,7 @@ from ..utils.metrics import MetricFunction, get_loss_fn, get_metric_fns
 from .engines import EngineOutput, create_trainer, create_evaluator, y_from_engine, loss_from_engine
 from .loss import LossFn, LossForward
 
+from torchsummary import summary
 
 def train(cfg: Config) -> None:
     # create output dir

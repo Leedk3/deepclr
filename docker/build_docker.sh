@@ -8,7 +8,7 @@ if [[ $# -ge 2 ]]; then
   TAG=${ARGS[1]}
   DOCKER_ARGS=${ARGS[*]:2}
 else
-  echo "Usage: ./build_docker.sh {deps, deploy} TAG [DOCKER_ARGS [...]]"
+  echo "Usage: ./build_docker.sh {deps, deploy, pcdet} TAG [DOCKER_ARGS [...]]"
   exit 1
 fi
 

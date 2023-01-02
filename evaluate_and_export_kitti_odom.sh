@@ -1,4 +1,4 @@
-SCENARIO_NAME='20221226_190803_kitti_07-10_GICP'
+SCENARIO_NAME='test/20221228_192213_kitti_04_10_PVNAVI'
 echo "Start evaluation"
 #./scripts/evaluation.py /home/usrg/scenarios --scenario kitti_07-10
 

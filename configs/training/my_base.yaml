@@ -4,7 +4,7 @@ device: cuda
 data_loader:
   parallel_loading: True
   num_workers: 6
-  batch_size: 3
+  batch_size: 2
   buffer_size: 10
 
 model:
@@ -34,11 +34,11 @@ model:
           MAX_POINTS_PER_VOXEL: 5
           MAX_NUMBER_OF_VOXELS: 60000
           POINT_SOURCE: raw_points
-          NUM_KEYPOINTS: 1024
+          NUM_KEYPOINTS: 4096
           NUM_OUTPUT_FEATURES: 128
           SAMPLE_METHOD: FPS
           # FEATURES_SOURCE: ['x_conv2', 'x_conv3', 'x_conv4', 'raw_points']
-          FEATURES_SOURCE: ['x_conv2', 'x_conv3', 'raw_points']
+          FEATURES_SOURCE: ['x_conv1', 'x_conv2', 'raw_points']
           SA_LAYER:
               raw_points:
                   MLPS: [[16, 16], [16, 16]]
@@ -68,8 +68,8 @@ model:
     merge:
       name: MotionEmbedding
       params:
-        k: 20
-        radius: 10.0
+        k: 10
+        radius: 4.0
         mlp: [128, 128, 256]
         
     output:

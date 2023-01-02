@@ -5,7 +5,8 @@ FROM deepclr-deps:${TAG}
 # System dependencies
 RUN apt-get update && apt-get install -q -y --no-install-recommends \
     # needed for installing python dependencies
-    git
+    git \
+    tmux tmuxp vim
 
 ARG DEBIAN_FRONTEND=noninteractive
 ENV TZ=Asia/Seoul
@@ -21,10 +22,11 @@ RUN python -m pip install --upgrade git+https://github.com/klintan/pypcd.git
 
 RUN python -m pip install pillow==8.3.2
 RUN python -m pip install trimesh
+RUN python -m pip install torchsummary
 
 # RUN apt install -y libgl1-mesa-glx
 
-RUN apt-get install -y tmux tmuxp vim 
+# RUN apt-get update && apt-get install -y tmux tmuxp vim 
 RUN apt-get install -y x11-xserver-utils
 
 # Enable installing into conda for all users

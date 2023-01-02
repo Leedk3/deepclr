@@ -34,10 +34,10 @@ model:
           MAX_POINTS_PER_VOXEL: 5
           MAX_NUMBER_OF_VOXELS: 60000
           POINT_SOURCE: raw_points
-          NUM_KEYPOINTS: 1024
+          NUM_KEYPOINTS: 4096
           NUM_OUTPUT_FEATURES: 128
           SAMPLE_METHOD: FPS
-          FEATURES_SOURCE: ['x_conv2', 'x_conv3', 'raw_points']
+          FEATURES_SOURCE: ['x_conv1', 'x_conv2', 'raw_points']
           SA_LAYER:
               raw_points:
                   MLPS: [[16, 16], [16, 16]]
@@ -74,12 +74,16 @@ model:
         #   use_attention: False
         #   NUM_KEYPOINTS : 1024 #this should be same number above
         #                        # NUM_KEYPOINTS > point_dim + 2 * (input_dim - point_dim)
-        transformer:
+
+    transformer:
+      name: Transformer
+      params:
+        transformer_dict :
           use_transformer: True
           NUM_LAYER : 3
           NUM_HEAD :  4
-          NUM_KEYPOINTS : 1024 #this should be same number above
-                               # NUM_KEYPOINTS > point_dim + 2 * (input_dim - point_dim)
+          NUM_KEYPOINTS : 4096 #this should be same number above
+                                # NUM_KEYPOINTS > point_dim + 2 * (input_dim - point_dim)
           enc_nlayers : 3
           enc_dim : 256
           enc_nhead : 4
@@ -96,7 +100,7 @@ model:
     output:
       name: OutputSimple
       params:
-        mlp: [256, 256, 512, 512, 1024]
+        mlp: [256, 512, 1024] #[256, 256, 512, 512, 1024]
         linear: [1024, 512, 256]
 
 metrics:
