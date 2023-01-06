@@ -221,3 +221,25 @@ def plot_kitti_errors(segment_metrics: MetricsContainer, **kwargs: Any) -> mpl.f
     fig.subplots_adjust(hspace=0.3, wspace=0.3)
 
     return fig
+
+def plot_attention(xyz: np.ndarray, attention_weights: np.ndarray,  **kwargs: Any) -> mpl.figure.Figure:
+    """Plot attention."""
+    fig, ax = _new_figure(is_3d=True, **kwargs)
+
+    axis_min = np.min(xyz, axis=0)
+    axis_max = np.max(xyz, axis=0)
+    axis_center = (axis_max + axis_min) / 2
+    axis_len = np.max((axis_max - axis_min) / 2)
+
+    # Scatter plot the lidar data using the attention weights to color the points
+    ax.scatter(xyz[:,0], xyz[:,1], xyz[:,2], c=attention_weights)
+
+    ax.set_xlabel('x')
+    ax.set_ylabel('y')
+    ax.set_zlabel('z')
+    ax.set_xlim(axis_center[0] - axis_len, axis_center[0] + axis_len)
+    ax.set_ylim(axis_center[1] - axis_len, axis_center[1] + axis_len)
+    ax.set_zlim(axis_center[2] - axis_len, axis_center[2] + axis_len)
+    ax.autoscale(enable=True, axis='x', tight=True)
+
+    return fig

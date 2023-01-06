@@ -18,7 +18,7 @@ from spconv.pytorch.utils import PointToVoxel as VoxelGenerator
 from torch.profiler import profile, record_function, ProfilerActivity
 from .transformer import SelfAttention, Transformer3D, Transformer
 
-# from detr3d.utils.pc_util import scale_points, shift_scale_points
+from detr3d.utils.pc_util import scale_points, shift_scale_points
 
 from detr3d.models.helpers import GenericMLP
 from detr3d.models.position_embedding import PositionEmbeddingCoordsSine
@@ -747,17 +747,18 @@ class MotionEmbeddingBase(nn.Module):
         # print("feat : " , feat.shape)
 
         # append features to pts1 pos and separate batches
-        # out = torch.cat((pts0[:, :self._point_dim], feat), dim=1) #origin out
+        out = torch.cat((pts0[:, :self._point_dim], feat), dim=1) #origin out
         # print("out : " , out.shape)
 
         # pts diff 
-        pos_diff = pos_diff.transpose(1, 2)
-        # print("pos_diff 2: " , pos_diff.shape)
-        new_pos_diff, _ = torch.max(pos_diff, dim=2)
-        # print("pos_diff : ", pos_diff.shape)
-        # print("new_pos_diff : ", new_pos_diff.shape)
-        out = torch.cat((new_pos_diff, feat), dim=1) #test with diff
-
+        use_pts_diff = False
+        if use_pts_diff:
+            pos_diff = pos_diff.transpose(1, 2)
+            print("pos_diff 2: " , pos_diff.shape)
+            new_pos_diff, _ = torch.max(pos_diff, dim=2)
+            print("pos_diff : ", pos_diff.shape)
+            print("new_pos_diff : ", new_pos_diff.shape)
+            out = torch.cat((new_pos_diff, feat), dim=1) #test with diff
 
         out = out.view(clouds0.shape[0], -1, out.shape[1]).transpose(1, 2).contiguous()
         # print("(self._input_dim - self._point_dim) : ", (self._input_dim - self._point_dim))

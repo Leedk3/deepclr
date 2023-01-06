@@ -10,7 +10,7 @@ import numpy as np
 
 from .data import Sequence
 from .metrics import SegmentMetrics, TransformationMetrics, MetricsContainer
-from .plot import plot_error_over_time, plot_kitti_errors, plot_segment_error_bars, plot_sequence, plot_sequence_2d
+from .plot import plot_error_over_time, plot_kitti_errors, plot_segment_error_bars, plot_sequence, plot_sequence_2d, plot_attention
 
 
 _T = TypeVar('_T')
@@ -199,6 +199,14 @@ class Evaluator:
         figures = OrderedDict()
         for name, sequence in self._sequences.items():
             fig = plot_sequence_2d(sequence)
+            fig.suptitle(f'{name}')
+            figures[name] = fig
+        return figures
+
+    def plot_points_attention(self) -> OrderedDictType[str, mpl.figure.Figure]:
+        figures = OrderedDict()
+        for name, sequence in self._sequences.items():
+            fig = plot_attention(sequence)
             fig.suptitle(f'{name}')
             figures[name] = fig
         return figures

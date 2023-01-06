@@ -1,6 +1,6 @@
 extends: 'dlopvt_base.yaml'
 
-identifier: kitti_00-06
+identifier: dlopvt_00-06
 
 data:
   training: ['${KITTI_PATH}/odometry/00.lmdb',

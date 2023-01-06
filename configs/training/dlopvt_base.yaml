@@ -4,7 +4,7 @@ device: cuda
 data_loader:
   parallel_loading: True
   num_workers: 6
-  batch_size: 2
+  batch_size: 3
   buffer_size: 10
 
 model:
@@ -30,7 +30,7 @@ model:
           MAX_POINTS_PER_VOXEL: 5
           MAX_NUMBER_OF_VOXELS: 60000
           POINT_SOURCE: raw_points
-          NUM_KEYPOINTS: 4096
+          NUM_KEYPOINTS: 2048
           NUM_OUTPUT_FEATURES: 128
           SAMPLE_METHOD: FPS
           FEATURES_SOURCE: ['x_conv1', 'x_conv2', 'raw_points']
@@ -73,7 +73,7 @@ model:
         transformer_dict :
           NUM_LAYER : 3
           NUM_HEAD :  4
-          NUM_KEYPOINTS : 4096 #this should be same number above
+          NUM_KEYPOINTS : 2048 #this should be same number above
                                 # NUM_KEYPOINTS > point_dim + 2 * (input_dim - point_dim)
           enc_nlayers : 3
           enc_dim : 256
@@ -82,10 +82,10 @@ model:
           enc_dropout : 0.1
           enc_activation : "relu"
 
-          dec_nlayers : 4
+          dec_nlayers : 3
           dec_dim : 256
           dec_nhead : 4
-          dec_ffn_dim : 256
+          dec_ffn_dim : 128
           dec_dropout : 0.1
 
           mlp_dropout : 0.1
@@ -103,7 +103,7 @@ metrics:
       params:
         p: 2
     - type: rot
-      weights: [200.0]
+      weights: [100.0]
       params:
         p: 2
   other:
