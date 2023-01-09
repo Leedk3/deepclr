@@ -153,6 +153,8 @@ def run_trainer(
                              accumulation_steps=cfg.optimizer.accumulation_steps)
     evaluator = create_evaluator(model, metrics=val_metrics, device=device)
 
+    print("metric : " , cfg.metrics)
+
     # checkpointer
     checkpointer = Checkpointer(output_dir, n_saved=cfg.logging.checkpoint_n_saved, create_dir=True)
 
