@@ -62,6 +62,15 @@ class ModelInferenceHelper:
         self._is_sequential = is_sequential
         self._state: Optional[torch.Tensor] = None
 
+        # debug
+        feature_extraction_module = nn.Sequential(*list(model.children())[0])
+        after_submodel = nn.Sequential(*list(model.children())[1]) #after feature abstraction
+
+        motion_embedding_module = list(after_submodel.children())[0]
+        transformer_module = list(after_submodel.children())[1]
+        output_module = list(after_submodel.children())[2]
+        self._submodel = nn.Sequential(motion_embedding_module, transformer_module)
+
     def has_state(self) -> bool:
         return self._state is not None
 
@@ -107,7 +116,7 @@ class ModelInferenceHelper:
                 else:
                     # subsequent call
                     x = self.stack(self._state, source)
-                    y, _, _ = self._model.forward(x, is_feat=True)
+                    y, loss, debug_output = self._model.forward(x, is_feat=True)
                     self._state = source
                     return y[0, :]
 
@@ -118,6 +127,57 @@ class ModelInferenceHelper:
                 x = self.stack(template, source)
                 y, _, _ = self._model.forward(x, is_feat=False)
                 return y[0, :]
+
+    def partial_predict(self, source: torch.Tensor, template: Optional[torch.Tensor] = None) -> Optional[torch.Tensor]:
+        """
+        Predict transform.
+            :param source: Single source point cloud.
+            :param template: Single template point cloud for non-sequential prediction.
+            :return: Batch with both clouds.
+        """
+        # truncate input
+        if source.shape[1] > self._input_dim:
+            warnings.warn(f"Truncate source point cloud from dimension {source.shape[1]} "
+                          f"to required dimension {self._input_dim}.")
+            source = source[:, :self._input_dim]
+        elif source.shape[1] < self._input_dim:
+            raise RuntimeError("Wrong point dimension in source.")
+
+        if template is not None:
+            if template.shape[1] > self._input_dim:
+                warnings.warn(f"Truncate template point cloud from dimension {template.shape[1]} "
+                              f"to required dimension {self._input_dim}.")
+                template = template[:, :self._input_dim]
+            elif template.shape[1] < self._input_dim:
+                raise RuntimeError("Wrong point dimension in template.")
+
+        # inference
+        with torch.no_grad():
+            if self._is_sequential:
+                if template is not None:
+                    raise RuntimeError("Only the source cloud is required for sequential prediction.")
+
+                source = self._model.cloud_features(source.unsqueeze(0))[0, ...]
+                return source
+                
+                if self._state is None:
+                    # first call
+                    self._state = source
+                    return None
+                else:
+                    # subsequent call
+                    x = self.stack(self._state, source)
+                    output = self._submodel(x)
+                    self._state = source
+                    return output
+
+            else:
+                if template is None:
+                    raise RuntimeError("Source and template clouds are required for non-sequential prediction.")
+
+                x = self.stack(template, source)
+                output = self._submodel(x)
+                return output
 
     @staticmethod
     def stack(template: torch.Tensor, source: torch.Tensor) -> torch.Tensor:

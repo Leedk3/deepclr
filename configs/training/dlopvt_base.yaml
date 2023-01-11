@@ -10,7 +10,7 @@ data_loader:
 model:
   input_dim: 4
   point_dim: 3
-  label_type: pose3d_quat #pose3d_euler #pose3d_quat #pose3d_dual_quat,
+  label_type: pose3d_dual_quat #pose3d_euler #pose3d_quat #pose3d_dual_quat,
 
   model_type: dlopvt
   params:
@@ -101,12 +101,12 @@ metrics:
       params:
         p: 2
     - type: rot
-      weights: [100.0]
+      weights: [200.0]
       params:
         p: 2
   other:
     - type: quat_norm #rot #quat_norm
-    - type: trans_3d #trans_3d #dual_constraint
+    - type: dual_constraint #trans_3d #dual_constraint
 
 optimizer:
   name: Ranger

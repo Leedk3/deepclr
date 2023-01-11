@@ -705,8 +705,7 @@ class MotionEmbeddingBase(nn.Module):
         # print("========Embedding LAYER TEST ==========\n")
 
     def output_dim(self) -> int:
-        return self._point_dim + 2 * (self._input_dim - self._point_dim)
-
+        return self._point_dim + self._conv.output_dim() #2 * (self._input_dim - self._point_dim)
 
     def forward(self, clouds0: torch.Tensor, clouds1: torch.Tensor) -> torch.Tensor:
         # print("========Embedding LAYER TEST ==========\n")

@@ -23,6 +23,7 @@ RUN python -m pip install --upgrade git+https://github.com/klintan/pypcd.git
 RUN python -m pip install pillow==8.3.2
 RUN python -m pip install trimesh
 RUN python -m pip install torchsummary
+RUN python -m pip install scikit-learn
 
 # RUN apt install -y libgl1-mesa-glx
 
