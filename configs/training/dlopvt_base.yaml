@@ -4,13 +4,13 @@ device: cuda
 data_loader:
   parallel_loading: True
   num_workers: 6
-  batch_size: 3
+  batch_size: 5
   buffer_size: 10
 
 model:
   input_dim: 4
   point_dim: 3
-  label_type: pose3d_euler #pose3d_quat #pose3d_dual_quat,
+  label_type: pose3d_quat #pose3d_euler #pose3d_quat #pose3d_dual_quat,
 
   model_type: dlopvt
   params:
@@ -63,8 +63,8 @@ model:
     merge:
       name: MotionEmbedding
       params:
-        k: 10
-        radius: 5.0
+        k: 20
+        radius: 10.0
         mlp: [128, 128, 256]
 
     transformer:
@@ -101,12 +101,12 @@ metrics:
       params:
         p: 2
     - type: rot
-      weights: [10.0]
+      weights: [100.0]
       params:
         p: 2
   other:
-    - type: rot #quat_norm
-    - type: trans_3d #dual_constraint
+    - type: quat_norm #rot #quat_norm
+    - type: trans_3d #trans_3d #dual_constraint
 
 optimizer:
   name: Ranger

@@ -65,6 +65,9 @@ def create_trainer(model: BaseModel, optimizer: torch.optim.Optimizer,
             y_pred, _, _ = model(batch['x'], m=batch['m'])
             loss = loss_fn(y_pred, batch['y'])
 
+        # print("y_pred : ", y_pred)
+        # print("loss : ", loss)
+
         # check loss
         if loss is None or loss < 0.0:
             raise ValueError("Invalid loss: {}".format(loss.item()))

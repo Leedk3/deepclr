@@ -196,7 +196,7 @@ def run_trainer(
     def write_checkpoint(engine):
         checkpointer.save_checkpoint(engine, model, optimizer, scheduler)
 
-    if cfg.scheduler.on_iteration:
+    if cfg.scheduler.on_iteration: #dlop-vt config : True 
         @trainer.on(Events.ITERATION_COMPLETED)
         def scheduler_step(engine):
             metrics = engine.state.metrics

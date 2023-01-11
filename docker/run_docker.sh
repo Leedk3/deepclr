@@ -18,7 +18,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 DEEPCLR_DIR="$(readlink -f "${SCRIPT_DIR}/../")"
 
 # default config
-GPU_NUM="1"
+GPU_NUM="0"
 CONTAINER_NAME="deepclr-pcdet-${GPU_NUM}"
 
 IMAGE_REGISTRY="docker.pkg.github.com/mhorn11/deepclr/"
