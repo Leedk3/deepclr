@@ -17,6 +17,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib.animation import FuncAnimation
 import plotly.graph_objects as go
+import time
 
 def main():
     # parse inputs
@@ -104,15 +105,15 @@ def main():
             t_start = torch.cuda.Event(enable_timing=True)
             t_end = torch.cuda.Event(enable_timing=True)
             t_start.record()
-
+            print(i)
             if scene_cfg.sequential:
                 if not helper.has_state():
                     helper.predict(template)
                 y_pred = helper.predict(source)
-                print("partial_predict")
+                # print("partial_predict")
                 y_partial = helper.partial_predict(source).squeeze(0)
                 y_partial = y_partial.detach().cpu().numpy()
-                print(y_partial.shape, y_partial[:3, :]) #feature extraction
+                # print(y_partial.shape, y_partial[:3, :]) #feature extraction
                 # print(y_partial.shape, y_partial[:, :3]) #transformer
 
 
@@ -133,7 +134,7 @@ def main():
             target_pts_y = target_np[:, 1]
             target_pts_z = target_np[:, 2]
             target_scat = ax.scatter(target_pts_x, target_pts_y, target_pts_z,  s=0.01, c='r')
-            print(y_partial)
+            # print(y_partial)
             y_partial_x = y_partial[0, :]
             y_partial_y = y_partial[1, :]
             y_partial_z = y_partial[2, :]
@@ -164,7 +165,7 @@ def main():
                         ,name='target'))
             fig.add_trace(go.Scatter3d(mode='markers', x=y_partial_x, y=y_partial_y, z=y_partial_z, 
                         marker=dict(
-                            color='rgba(255, 255, 25, 0.9)',
+                            color='rgba(0, 255, 25, 0.9)',
                             size=5,
                             # line=dict(
                             #     color='MediumPurple',
@@ -181,7 +182,9 @@ def main():
             fig.update_layout(scene=dict(aspectmode='manual', aspectratio=dict(x=1, y=1, z=0.25)))
             fig.update_layout(scene=dict(aspectmode='data'))
             fig.write_html("plot.html")
-            fig.show()
+            # fig.show()
+
+            time.sleep(0.2)
 
         del df
 

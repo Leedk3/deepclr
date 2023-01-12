@@ -714,7 +714,8 @@ class MotionEmbeddingBase(nn.Module):
 
         # merge
         pos_diff = group_pts1[:, :, :self._point_dim] - group_pts0[:, :, :self._point_dim]
-        # print("pts0 : " , pts0)
+        # print("pts0 : " , pts0, pts0.shape)
+        # print("pts1 : " , pts1, pts1.shape)
         # print("pos_diff : " , pos_diff.shape)
         # print("group_pts0[:, :, self._point_dim:] : " , group_pts0[:, :, self._point_dim:].shape)
         # print("group_pts1[:, :, self._point_dim:] : " , group_pts1[:, :, self._point_dim:].shape)
@@ -801,6 +802,7 @@ class MotionEmbedding(DLOPVTModule):
 
     def forward(self, clouds: torch.Tensor) -> torch.Tensor:
         batch_dim = int(clouds.shape[0] / 2)
+
         return self._embedding(clouds[:batch_dim, ...],
                                clouds[batch_dim:, ...])
 
