@@ -82,6 +82,8 @@ def main():
     ax.set_xlim(-50, 50)
     ax.set_ylim(-50, 50)
     # iterate files
+    plotly_vis = False
+
     for data_name, data_file in scene_cfg.data.items():
 
         # load data
@@ -100,6 +102,8 @@ def main():
             source = torch.from_numpy(ds['clouds'][1]).cuda()
             stamp = ds['timestamps'][0]
             transform_gt = ds['transform']
+
+
 
             # predict with timing
             t_start = torch.cuda.Event(enable_timing=True)
@@ -139,52 +143,50 @@ def main():
             y_partial_y = y_partial[1, :]
             y_partial_z = y_partial[2, :]
             attention_scat = ax.scatter(y_partial_x, y_partial_y, y_partial_z,  s=0.5, c='r')
-            first_call = True
-            
+
             # plt.show()
-            fig = go.Figure()
-            fig.add_trace(go.Scatter3d(mode='markers', x=source_pts_x, y=source_pts_y, z=source_pts_z, 
-                        marker=dict(
-                            color='rgba(255, 0, 25, 0.9)',
-                            size=3,
-                            # line=dict(
-                            #     color='MediumPurple',
-                            #     width=1
-                            # )
-                        )
-                        ,name='source'))
-            fig.add_trace(go.Scatter3d(mode='markers', x=target_pts_x, y=target_pts_y, z=target_pts_z, 
-                        marker=dict(
-                            color='rgba(0, 25, 255, 1)',
-                            size=3,
-                            # line=dict(
-                            #     color='MediumPurple',
-                            #     width=1
-                            # )
-                        )
-                        ,name='target'))
-            fig.add_trace(go.Scatter3d(mode='markers', x=y_partial_x, y=y_partial_y, z=y_partial_z, 
-                        marker=dict(
-                            color='rgba(0, 255, 25, 0.9)',
-                            size=5,
-                            # line=dict(
-                            #     color='MediumPurple',
-                            #     width=2
-                            # )
-                        )
-                        ,name='sampled'))
+            if plotly_vis:
+                fig = go.Figure()
+                fig.add_trace(go.Scatter3d(mode='markers', x=source_pts_x, y=source_pts_y, z=source_pts_z, 
+                            marker=dict(
+                                color='rgba(255, 0, 25, 0.9)',
+                                size=3,
+                                # line=dict(
+                                #     color='MediumPurple',
+                                #     width=1
+                                # )
+                            )
+                            ,name='source'))
+                fig.add_trace(go.Scatter3d(mode='markers', x=target_pts_x, y=target_pts_y, z=target_pts_z, 
+                            marker=dict(
+                                color='rgba(0, 25, 255, 1)',
+                                size=3,
+                                # line=dict(
+                                #     color='MediumPurple',
+                                #     width=1
+                                # )
+                            )
+                            ,name='target'))
+                fig.add_trace(go.Scatter3d(mode='markers', x=y_partial_x, y=y_partial_y, z=y_partial_z, 
+                            marker=dict(
+                                color='rgba(0, 255, 25, 0.9)',
+                                size=5,
+                                # line=dict(
+                                #     color='MediumPurple',
+                                #     width=2
+                                # )
+                            )
+                            ,name='sampled'))
 
-            # Show the figure
-            # fig.update_layout(width=700, margin=dict(r=40, l=40, b=10, t=10))
-            # fig.update_layout(scene=dict(xaxis=dict(autorange='reversed', range=[-60, 60]),
-            #                              yaxis=dict(autorange='reversed', range=[-60, 60]),
-            #                              zaxis=dict(autorange='reversed', range=[0, 5])))
-            fig.update_layout(scene=dict(aspectmode='manual', aspectratio=dict(x=1, y=1, z=0.25)))
-            fig.update_layout(scene=dict(aspectmode='data'))
-            fig.write_html("plot.html")
-            # fig.show()
-
-            time.sleep(0.2)
+                # Show the figure
+                # fig.update_layout(width=700, margin=dict(r=40, l=40, b=10, t=10))
+                # fig.update_layout(scene=dict(xaxis=dict(autorange='reversed', range=[-60, 60]),
+                #                              yaxis=dict(autorange='reversed', range=[-60, 60]),
+                #                              zaxis=dict(autorange='reversed', range=[0, 5])))
+                fig.update_layout(scene=dict(aspectmode='manual', aspectratio=dict(x=1, y=1, z=0.25)))
+                fig.update_layout(scene=dict(aspectmode='data'))
+                fig.write_html("plot.html")
+                time.sleep(0.2)
 
         del df
 

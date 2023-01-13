@@ -682,6 +682,7 @@ class MotionEmbeddingBase(nn.Module):
         self._input_dim = input_dim
         # self.transformer_dict = transformer
         print("point_dim + 2 * (input_dim - point_dim) : " , point_dim + 2 * (input_dim - point_dim))
+
         # self._transformer = Transformer(transformer.NUM_KEYPOINTS, point_dim + 2 * (input_dim - point_dim), transformer.NUM_LAYER, transformer.NUM_HEAD)
         # self._transformer = ModelTransformer(transformer, encoder_dim=transformer.enc_dim, decoder_dim=transformer.dec_dim)
 
@@ -701,6 +702,7 @@ class MotionEmbeddingBase(nn.Module):
         self._pts_diff_conv = Conv1dMultiLayer(pts_diff_mlp_layers, batch_norm=batch_norm)
 
         self._radius = radius
+        print("self._point_dim*2 + self._conv.output_dim() : " , self._point_dim*2 + self._conv.output_dim())
 
         # print("========Embedding LAYER TEST ==========\n")
 
@@ -714,9 +716,12 @@ class MotionEmbeddingBase(nn.Module):
 
         # merge
         pos_diff = group_pts1[:, :, :self._point_dim] - group_pts0[:, :, :self._point_dim]
+        origin_pos_diff = pos_diff.reshape(pts0.shape[0], -1)
         # print("pts0 : " , pts0, pts0.shape)
         # print("pts1 : " , pts1, pts1.shape)
         # print("pos_diff : " , pos_diff.shape)
+        # new_pos_diff = pos_diff.squeeze(1)
+        # print("new_pos_diff : " , new_pos_diff.shape)
         # print("group_pts0[:, :, self._point_dim:] : " , group_pts0[:, :, self._point_dim:].shape)
         # print("group_pts1[:, :, self._point_dim:] : " , group_pts1[:, :, self._point_dim:].shape)
         # print("group_pts0 : " , group_pts0.shape)
@@ -749,16 +754,17 @@ class MotionEmbeddingBase(nn.Module):
         # append features to pts1 pos and separate batches
         out = torch.cat((pts0[:, :self._point_dim], feat), dim=1) #origin out
         # print("out : " , out.shape)
+        # out = torch.cat((new_pos_diff, feat), dim=1) #pos diff positional encoder
 
         # pts diff 
-        use_pts_diff = False
-        if use_pts_diff:
-            pos_diff = pos_diff.transpose(1, 2)
-            print("pos_diff 2: " , pos_diff.shape)
-            new_pos_diff, _ = torch.max(pos_diff, dim=2)
-            print("pos_diff : ", pos_diff.shape)
-            print("new_pos_diff : ", new_pos_diff.shape)
-            out = torch.cat((new_pos_diff, feat), dim=1) #test with diff
+        # use_pts_diff = False
+        # if use_pts_diff:
+        #     pos_diff = pos_diff.transpose(1, 2)
+        #     print("pos_diff 2: " , pos_diff.shape)
+        #     new_pos_diff, _ = torch.max(pos_diff, dim=2)
+        #     print("pos_diff : ", pos_diff.shape)
+        #     print("new_pos_diff : ", new_pos_diff.shape)
+        #     out = torch.cat((new_pos_diff, feat), dim=1) #test with diff
 
         out = out.view(clouds0.shape[0], -1, out.shape[1]).transpose(1, 2).contiguous()
         # print("(self._input_dim - self._point_dim) : ", (self._input_dim - self._point_dim))
@@ -1013,13 +1019,19 @@ class ModelTransformer(TransformerModule):
         # inds: batch x npoints
 
         enc_xyz, enc_features= self.run_encoder(pre_enc_xyz, pre_enc_features)
+        # print("pre_enc_xyz : ",pre_enc_xyz.shape)
+        # print("pre_enc_features : ",pre_enc_features.shape) 
         # print("enc_xyz : ",enc_xyz.shape)
-        # print("enc_features : ",enc_features.shape) 
-        enc_features = self.encoder_to_decoder_projection(
-            enc_features.permute(1, 2, 0)
-        ).permute(2, 0, 1)
+        # print("enc_features : ", enc_features, enc_features.shape) 
+
+        # test here. we dont need encoder to decoder projection. length is same.
+        # enc_features = self.encoder_to_decoder_projection(
+        #     enc_features.permute(1, 2, 0)
+        # ).permute(2, 0, 1)
+        
         # encoder features: npoints x batch x channel
         # encoder xyz: npoints x batch x 3
+        # print("enc_features 2 : ", enc_features, enc_features.shape) 
 
         # min_max_xyz = pre_enc_xyz.reshape(-1, pre_enc_xyz.shape[2]).contiguous()
         # print(pre_enc_xyz.shape)
@@ -1035,6 +1047,7 @@ class ModelTransformer(TransformerModule):
         ]
 
         query_xyz, query_embed = self.get_query_embeddings(enc_xyz, point_cloud_dims)
+
         # query_embed: batch x channel x npoint
         enc_pos = self.pos_embedding(enc_xyz, input_range=point_cloud_dims)
 
@@ -1086,6 +1099,11 @@ class TransformerBase(nn.Module):
         # # TODO : self-attention layer here
         trans_xyz = embedded_flow[:, :self._point_dim,:].transpose(1,2).contiguous()
         trans_feature = embedded_flow[:, self._point_dim:,:].contiguous()
+
+        # print("trans_xyz : ", trans_xyz)
+        # print("trans_feature : ", trans_feature)
+        # print("target_xyz : ", target_xyz)
+
         # print("xyz", trans_xyz.shape)
         # print("feature", trans_feature.shape)
         # xyz torch.Size([2, 4096, 3])
@@ -1095,7 +1113,6 @@ class TransformerBase(nn.Module):
         # # features: batch x channel x npoints
         # # print(trans_xyz)
         prediction = self._transformer(trans_xyz, trans_feature)
-
         # print("pose_logits : ", prediction["pose_logits"].shape)
         # print("trans_normalized : ", prediction["trans_normalized"].shape)
         # print("trans_unnormalized : ", prediction["trans_unnormalized"].shape)
@@ -1108,8 +1125,8 @@ class TransformerBase(nn.Module):
         # trans_out = torch.cat((trans_xyz, dec_feature), dim=1)
         # print("trans_out", trans_out.shape)
 
-        # return prediction["pose_logits"]
-        return torch.cat((prediction["pose_logits"], prediction["trans_normalized"], prediction["rot_logits"]), dim=2)
+        return prediction["pose_logits"]
+        # return torch.cat((prediction["pose_logits"], prediction["trans_normalized"], prediction["rot_logits"]), dim=2)
 
 
 

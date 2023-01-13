@@ -64,7 +64,7 @@ model:
       name: MotionEmbedding
       params:
         k: 20
-        radius: 10.0
+        radius: 3.0
         mlp: [128, 128, 256]
 
     transformer:

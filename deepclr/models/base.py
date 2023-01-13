@@ -158,7 +158,6 @@ class ModelInferenceHelper:
                     raise RuntimeError("Only the source cloud is required for sequential prediction.")
 
                 source = self._model.cloud_features(source.unsqueeze(0))[0, ...]
-                return source
                 
                 if self._state is None:
                     # first call

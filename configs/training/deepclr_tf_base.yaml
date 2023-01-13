@@ -10,7 +10,7 @@ data_loader:
 model:
   input_dim: 4
   point_dim: 3
-  label_type: pose3d_dual_quat
+  label_type: pose3d_quat #pose3d_dual_quat
 
   model_type: deepclrtf
   params:
@@ -71,7 +71,7 @@ metrics:
         p: 2
   other:
     - type: quat_norm
-    - type: dual_constraint
+    - type: trans_3d #dual_constraint
 
 optimizer:
   name: Ranger
