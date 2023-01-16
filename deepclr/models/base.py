@@ -69,7 +69,9 @@ class ModelInferenceHelper:
         motion_embedding_module = list(after_submodel.children())[0]
         transformer_module = list(after_submodel.children())[1]
         output_module = list(after_submodel.children())[2]
-        self._submodel = nn.Sequential(motion_embedding_module, transformer_module)
+        self._submodel = nn.Sequential(motion_embedding_module)
+        
+        # self._submodel = nn.Sequential(motion_embedding_module, transformer_module)
 
     def has_state(self) -> bool:
         return self._state is not None

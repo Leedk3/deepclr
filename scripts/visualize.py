@@ -19,6 +19,19 @@ from matplotlib.animation import FuncAnimation
 import plotly.graph_objects as go
 import time
 
+import dash
+from dash import html
+from dash import dcc
+import numpy as np
+
+from dash.dependencies import Input, Output, State
+
+
+SCENE_NUM = 250
+
+app = dash.Dash(__name__, update_title=None)  # remove "Updating..." from title
+
+
 def main():
     # parse inputs
     parser = argparse.ArgumentParser(description="Model inference for evaluation scenario.")
@@ -82,114 +95,163 @@ def main():
     ax.set_xlim(-50, 50)
     ax.set_ylim(-50, 50)
     # iterate files
-    plotly_vis = False
+    plotly_vis = True
 
-    for data_name, data_file in scene_cfg.data.items():
 
-        # load data
-        df = create_input_dataflow(scene_cfg.dataset_type, data_file, shuffle=False)
+    df = create_input_dataflow(scene_cfg.dataset_type, scene_cfg.data['08'], shuffle=False)
 
-        # iterate
-        df.reset_state()
-        helper.reset_state()
-        first_call = False
-        for i, ds in enumerate(df):
-            # Define the update function for the animation
-            if (i + 1) % 10 == 0:
-                logger.info(f"Data point {i + 1}/{len(df)}")            
-            # prepare data
-            template = torch.from_numpy(ds['clouds'][0]).cuda()
-            source = torch.from_numpy(ds['clouds'][1]).cuda()
-            stamp = ds['timestamps'][0]
-            transform_gt = ds['transform']
+    # iterate
+    df.reset_state()
+    helper.reset_state()
+    first_call = False
+
+    df = list(df)
+    global SCENE_NUM
+    ds = df[SCENE_NUM]
+    template = torch.from_numpy(ds['clouds'][0]).cuda()
+    source = torch.from_numpy(ds['clouds'][1]).cuda()
+    stamp = ds['timestamps'][0]
+    transform_gt = ds['transform']
 
 
 
-            # predict with timing
-            t_start = torch.cuda.Event(enable_timing=True)
-            t_end = torch.cuda.Event(enable_timing=True)
-            t_start.record()
-            print(i)
-            if scene_cfg.sequential:
-                if not helper.has_state():
-                    helper.predict(template)
-                y_pred = helper.predict(source)
-                # print("partial_predict")
-                y_partial = helper.partial_predict(source).squeeze(0)
-                y_partial = y_partial.detach().cpu().numpy()
-                # print(y_partial.shape, y_partial[:3, :]) #feature extraction
-                # print(y_partial.shape, y_partial[:, :3]) #transformer
+    # predict with timing
+    t_start = torch.cuda.Event(enable_timing=True)
+    t_end = torch.cuda.Event(enable_timing=True)
+    t_start.record()
+    if scene_cfg.sequential:
+        if not helper.has_state():
+            helper.predict(template)
+        y_pred = helper.predict(source)
+        # print("partial_predict")
+        source_partial = helper.partial_predict(source).squeeze(0)
+        source_partial = source_partial.detach().cpu().numpy()
+        source_partial = source_partial[:3, :] #feature
+        source_partial = np.transpose(source_partial) #feature
+        # source_partial = source_partial[:, :3] #transformer
+        # print(source_partial.shape, source_partial[:, :3]) #transformer
+
+        target_partial = helper.partial_predict(template).squeeze(0)
+        target_partial = target_partial.detach().cpu().numpy()
+        target_partial = target_partial[:3, :] #feature
+        print(target_partial.shape, target_partial) #feature extraction
+        target_partial = np.transpose(target_partial) #feature
+        print(target_partial.shape, target_partial) #feature extraction
+        # target_partial = target_partial[:, :3] #transformer
+        # print(target_partial.shape, target_partial[:, :3]) #transformer
 
 
-            else:
-                y_pred = helper.predict(source, template)                
 
-            t_end.record()
-            torch.cuda.synchronize()
+    else:
+        y_pred = helper.predict(source, template)                
 
-            source_np = np.array(ds['clouds'][0])
-            source_pts_x = source_np[:, 0]
-            source_pts_y = source_np[:, 1]
-            source_pts_z = source_np[:, 2]
-            source_scat = ax.scatter(source_pts_x, source_pts_y,source_pts_z, s=0.01, c='b')
+    t_end.record()
+    torch.cuda.synchronize()
 
-            target_np = np.array(ds['clouds'][1])
-            target_pts_x = target_np[:, 0]
-            target_pts_y = target_np[:, 1]
-            target_pts_z = target_np[:, 2]
-            target_scat = ax.scatter(target_pts_x, target_pts_y, target_pts_z,  s=0.01, c='r')
-            # print(y_partial)
-            y_partial_x = y_partial[0, :]
-            y_partial_y = y_partial[1, :]
-            y_partial_z = y_partial[2, :]
-            attention_scat = ax.scatter(y_partial_x, y_partial_y, y_partial_z,  s=0.5, c='r')
+    source_np = np.array(ds['clouds'][0])
+    source_pts_x = source_np[:, 0]
+    source_pts_y = source_np[:, 1]
+    source_pts_z = source_np[:, 2]
+    source_scat = ax.scatter(source_pts_x, source_pts_y,source_pts_z, s=0.01, c='b')
 
-            # plt.show()
-            if plotly_vis:
-                fig = go.Figure()
-                fig.add_trace(go.Scatter3d(mode='markers', x=source_pts_x, y=source_pts_y, z=source_pts_z, 
-                            marker=dict(
-                                color='rgba(255, 0, 25, 0.9)',
-                                size=3,
-                                # line=dict(
-                                #     color='MediumPurple',
-                                #     width=1
-                                # )
-                            )
-                            ,name='source'))
-                fig.add_trace(go.Scatter3d(mode='markers', x=target_pts_x, y=target_pts_y, z=target_pts_z, 
-                            marker=dict(
-                                color='rgba(0, 25, 255, 1)',
-                                size=3,
-                                # line=dict(
-                                #     color='MediumPurple',
-                                #     width=1
-                                # )
-                            )
-                            ,name='target'))
-                fig.add_trace(go.Scatter3d(mode='markers', x=y_partial_x, y=y_partial_y, z=y_partial_z, 
-                            marker=dict(
-                                color='rgba(0, 255, 25, 0.9)',
-                                size=5,
-                                # line=dict(
-                                #     color='MediumPurple',
-                                #     width=2
-                                # )
-                            )
-                            ,name='sampled'))
+    target_np = np.array(ds['clouds'][1])
+    target_pts_x = target_np[:, 0]
+    target_pts_y = target_np[:, 1]
+    target_pts_z = target_np[:, 2]
+    target_scat = ax.scatter(target_pts_x, target_pts_y, target_pts_z,  s=0.01, c='r')
+    # print(source_partial)
+    source_partial_x = source_partial[:, 0]
+    source_partial_y = source_partial[:, 1]
+    source_partial_z = source_partial[:, 2]
+    attention_scat = ax.scatter(source_partial_x, source_partial_y, source_partial_z,  s=0.5, c='r')
 
-                # Show the figure
-                # fig.update_layout(width=700, margin=dict(r=40, l=40, b=10, t=10))
-                # fig.update_layout(scene=dict(xaxis=dict(autorange='reversed', range=[-60, 60]),
-                #                              yaxis=dict(autorange='reversed', range=[-60, 60]),
-                #                              zaxis=dict(autorange='reversed', range=[0, 5])))
-                fig.update_layout(scene=dict(aspectmode='manual', aspectratio=dict(x=1, y=1, z=0.25)))
-                fig.update_layout(scene=dict(aspectmode='data'))
-                fig.write_html("plot.html")
-                time.sleep(0.2)
+    target_partial_x = target_partial[:, 0]
+    target_partial_y = target_partial[:, 1]
+    target_partial_z = target_partial[:, 2]
+
+    # plt.show()
+    if plotly_vis:
+        fig = go.Figure()
+        fig.add_trace(go.Scatter3d(mode='markers', x=source_pts_x, y=source_pts_y, z=source_pts_z, 
+                    marker=dict(
+                        color='rgba(255, 0, 25, 0.9)',
+                        size=3,
+                        # line=dict(
+                        #     color='MediumPurple',
+                        #     width=1
+                        # )
+                    )
+                    ,name='source'))
+        fig.add_trace(go.Scatter3d(mode='markers', x=target_pts_x, y=target_pts_y, z=target_pts_z, 
+                    marker=dict(
+                        color='rgba(0, 25, 255, 0.9)',
+                        size=3,
+                        # line=dict(
+                        #     color='MediumPurple',
+                        #     width=1
+                        # )
+                    )
+                    ,name='target'))
+        fig.update_layout(scene=dict(aspectmode='manual', aspectratio=dict(x=1, y=1, z=0.25)))
+        fig.update_layout(scene=dict(aspectmode='data'))
+        fig.write_html("plot.html")
+        
+        fig2 = go.Figure()
+        fig2.add_trace(go.Scatter3d(mode='markers', x=source_pts_x, y=source_pts_y, z=source_pts_z, 
+                    marker=dict(
+                        color='rgba(255, 0, 25, 0.2)',
+                        size=3,
+                        # line=dict(
+                        #     color='MediumPurple',
+                        #     width=1
+                        # )
+                    )
+                    ,name='source'))
+        fig2.add_trace(go.Scatter3d(mode='markers', x=target_pts_x, y=target_pts_y, z=target_pts_z, 
+                    marker=dict(
+                        color='rgba(0, 25, 255, 0.2)',
+                        size=3,
+                        # line=dict(
+                        #     color='MediumPurple',
+                        #     width=1
+                        # )
+                    )
+                    ,name='target'))
+        fig2.add_trace(go.Scatter3d(mode='markers', x=source_partial_x, y=source_partial_y, z=source_partial_z, 
+                    marker=dict(
+                        color='rgba(255, 0, 25, 0.9)',
+                        size=15,
+                        # line=dict(
+                        #     color='MediumPurple',
+                        #     width=2
+                        # )
+                    )
+                    ,name='sampled'))
+        # fig2.add_trace(go.Scatter3d(mode='markers', x=target_partial_x, y=target_partial_y, z=target_partial_z, 
+        #             marker=dict(
+        #                 color='rgba(0, 25, 255, 0.9)',
+        #                 size=15,
+        #                 # line=dict(
+        #                 #     color='MediumPurple',
+        #                 #     width=2
+        #                 # )
+        #             )
+        #             ,name='sampled'))
+
+
+        # Show the fig2ure
+        # fig2.update_layout(width=700, margin=dict(r=40, l=40, b=10, t=10))
+        # fig2.update_layout(scene=dict(xaxis=dict(autorange='reversed', range=[-60, 60]),
+        #                              yaxis=dict(autorange='reversed', range=[-60, 60]),
+        #                              zaxis=dict(autorange='reversed', range=[0, 5])))
+        fig2.update_layout(scene=dict(aspectmode='manual', aspectratio=dict(x=1, y=1, z=0.25)))
+        fig2.update_layout(scene=dict(aspectmode='data'))
+        fig2.write_html("plot2.html")
+        time.sleep(0.2)
 
         del df
-
+    
+        app.run_server(debug=True)
 
 
 if __name__ == '__main__':

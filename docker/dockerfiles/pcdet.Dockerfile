@@ -24,7 +24,9 @@ RUN python -m pip install pillow==8.3.2
 RUN python -m pip install trimesh
 RUN python -m pip install torchsummary
 RUN python -m pip install scikit-learn
-
+RUN python -m pip install plotly
+RUN python -m pip install dash
+RUN python -m pip install pyorbital
 # RUN apt install -y libgl1-mesa-glx
 
 # RUN apt-get update && apt-get install -y tmux tmuxp vim 

@@ -1025,9 +1025,9 @@ class ModelTransformer(TransformerModule):
         # print("enc_features : ", enc_features, enc_features.shape) 
 
         # test here. we dont need encoder to decoder projection. length is same.
-        # enc_features = self.encoder_to_decoder_projection(
-        #     enc_features.permute(1, 2, 0)
-        # ).permute(2, 0, 1)
+        enc_features = self.encoder_to_decoder_projection(
+            enc_features.permute(1, 2, 0)
+        ).permute(2, 0, 1)
         
         # encoder features: npoints x batch x channel
         # encoder xyz: npoints x batch x 3

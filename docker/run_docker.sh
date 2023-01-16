@@ -18,7 +18,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 DEEPCLR_DIR="$(readlink -f "${SCRIPT_DIR}/../")"
 
 # default config
-GPU_NUM="0"
+GPU_NUM="1"
 CONTAINER_NAME="deepclr-pcdet-${GPU_NUM}"
 
 IMAGE_REGISTRY="docker.pkg.github.com/mhorn11/deepclr/"
@@ -158,6 +158,7 @@ DOCKER_ARGS+=(-v /home/usrg/deepclr/deepclr.egg-info:/home/usrg/deepclr/deepclr.
 # DOCKER_ARGS+=(-v /home/usrg/Data/Dataset/3D_data/localize/dataset:/home/usrg/deepclr/data/original:rw)
 DOCKER_ARGS+=(-e KITTI_PATH="/home/usrg/Data/Dataset/3D_data/localize/dataset")
 # DOCKER_ARGS+=(-e MODLE_PATH=/home/usrg/deepclr/models)
+DOCKER_ARGS+=(--network=host)
 
 # mount directories
 for dir in "${MOUNT_DIRS[@]}"; do
