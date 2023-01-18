@@ -911,7 +911,7 @@ class ModelTransformer(TransformerModule):
         # Semantic class of the box
         self.pose_head = mlp_func(output_dim=256)
         self.trans_head = mlp_func(output_dim=3)
-        self.rot_head = mlp_func(output_dim=3)
+        self.rot_head = mlp_func(output_dim=256)
 
 
     def get_query_embeddings(self, encoder_xyz, point_cloud_dims):
@@ -979,27 +979,19 @@ class ModelTransformer(TransformerModule):
 
         # mlp head outputs are (num_layers x batch) x noutput x nqueries, so transpose last two dims
         pose_logits = self.pose_head(box_features).transpose(1, 2)
-        trans_normalized = self.trans_head(box_features).transpose(1, 2) 
         rot_logits = self.rot_head(box_features).transpose(1, 2) 
 
 
         # reshape outputs to num_layers x batch x nqueries x noutput
         pose_logits = pose_logits.reshape(num_layers, batch, num_queries, -1)
-        trans_normalized = trans_normalized.reshape(num_layers, batch, num_queries, -1)
         rot_logits = rot_logits.reshape(num_layers, batch, num_queries, -1)
 
         outputs = []
         for l in range(num_layers):
-
-            
-            trans_normalized_, trans_unnormalized_ = self.compute_predicted_center(
-                trans_normalized[l], query_xyz, point_cloud_dims
-            )            
+ 
 
             box_prediction = {
                 "pose_logits": pose_logits[l],
-                "trans_normalized": trans_normalized_.contiguous(),
-                "trans_unnormalized": trans_unnormalized_,
                 "rot_logits": rot_logits[l],
             }
             outputs.append(box_prediction)
@@ -1125,7 +1117,7 @@ class TransformerBase(nn.Module):
         # trans_out = torch.cat((trans_xyz, dec_feature), dim=1)
         # print("trans_out", trans_out.shape)
 
-        return prediction["pose_logits"]
+        return prediction["pose_logits"], prediction["rot_logits"] 
         # return torch.cat((prediction["pose_logits"], prediction["trans_normalized"], prediction["rot_logits"]), dim=2)
 
 
@@ -1157,15 +1149,25 @@ class OutputSimple(DLOPVTModule):
         # print("output_dim : ", self.conv.output_dim())
         self.linear = LinearMultiLayer(linear, batch_norm=batch_norm,
                                        dropout_keep=dropout, dropout_last=True)
-        self.output = nn.Linear(linear[-1], label_type.dim, bias=True)
+        self.output = nn.Linear(linear[-1], 4, bias=True)
+
+
+        self.rot_conv = Conv1dMultiLayer(mlp_layers, batch_norm=batch_norm)
+        # print("output_dim : ", self.conv.output_dim())
+        self.rot_linear = LinearMultiLayer(linear, batch_norm=batch_norm,
+                                       dropout_keep=dropout, dropout_last=True)
+        self.rot_output = nn.Linear(linear[-1], 4, bias=True)
+
 
         # init weights
         nn.init.xavier_uniform_(self.output.weight)
+        nn.init.xavier_uniform_(self.rot_output.weight)
 
         # bias
         if label_type.bias is not None:
             for i, v in enumerate(label_type.bias):
                 self.output.bias.data[i] = v
+                self.rot_output.bias.data[i] = v
 
     def output_dim(self) -> int:
         return self._label_type.dim
@@ -1179,24 +1181,24 @@ class OutputSimple(DLOPVTModule):
             x[:, 1:4] = torch.tanh(x[:, 1:4])
         return x
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, pos_x: torch.Tensor, rot_x: torch.Tensor) -> torch.Tensor:
         # apply pointnet to get final feature vector
         # print("========Output LAYER TEST ==========\n")
-        # print("0 : ", x.shape)
-        x = self.conv(x)
-        # print("1 : ", x.shape)
-
-        x, _ = torch.max(x, dim=2)
-        # print("2 : ", x.shape)
-
+        pos_x = self.conv(pos_x)
+        pos_x, _ = torch.max(pos_x, dim=2)
         # output shape
-        x = self.linear(x)
-        # print("3 : ", x.shape)
+        pos_x = self.linear(pos_x)
+        pos_x = self.output(pos_x)
+        pos_x = self._output_activation(pos_x)
 
-        x = self.output(x)
+        rot_x = self.conv(rot_x)
+        rot_x, _ = torch.max(rot_x, dim=2)
+        # output shape
+        rot_x = self.rot_linear(rot_x)
+        rot_x = self.rot_output(rot_x)
+        rot_x = self._output_activation(rot_x)
 
-        # print("4 : ", x.shape)
-        x = self._output_activation(x)
+        x = torch.cat(rot_x, pos_x, dim=2)
 
 
         # print("5 : ", x.shape)
