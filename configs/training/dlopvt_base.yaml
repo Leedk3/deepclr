@@ -96,12 +96,12 @@ model:
 
 metrics:
   loss:
-    - type: trans
-      weights: [1.0]
+    - type: dual #trans
+      weights: [5.0] #[1.0]
       params:
-        p: 2
+        p: 1 #2
     - type: rot
-      weights: [200.0]
+      weights: [200.0] #[200.0]
       params:
         p: 2
   other:
