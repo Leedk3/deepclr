@@ -20,13 +20,13 @@ def prepare_batch(batch: BatchDataTorch, device: Optional[Union[str, torch.devic
 
 
 class EngineOutput(TypedDict):
-    y_pred: torch.Tensor
+    y_pred: Dict
     y: torch.Tensor
     loss: Optional[torch.Tensor]
     aux: Dict
 
 
-def y_from_engine(x: EngineOutput) -> Tuple[torch.Tensor, torch.Tensor]:
+def y_from_engine(x: EngineOutput) -> Tuple[Dict, torch.Tensor]:
     """Access prediction and ground-truth labels from engine output."""
     return x['y_pred'], x['y']
 
@@ -58,6 +58,19 @@ def create_trainer(model: BaseModel, optimizer: torch.optim.Optimizer,
         model.train()
 
         batch = prepare_batch(batch, device=device, non_blocking=non_blocking)
+        # print("batch : ", batch['y'])
+        # print("batch : ", batch['y'].shape)
+        # batch :  tensor([[ 9.9992e-01,  2.6114e-04,  1.9579e-03, -1.2599e-02,  1.0083e-05,
+        #         5.2599e-01,  5.6490e-03,  1.2581e-02],
+        #         [ 9.9999e-01,  1.3821e-03,  3.7447e-03, -2.0768e-03, -1.0103e-03,
+        #         7.6712e-01, -8.3696e-03,  8.9373e-03],
+        #         [ 9.9997e-01, -3.2622e-05,  5.4963e-04,  7.6416e-03, -3.5356e-05,
+        #         3.4594e-01,  7.8579e-03,  5.5382e-03],
+        #         [ 9.9997e-01, -2.2440e-03, -1.9467e-03, -7.0007e-03,  3.8954e-04,
+        #         1.8990e-01,  1.4827e-02, -9.3503e-03],
+        #         [ 1.0000e+00,  2.7579e-03, -1.2894e-04,  7.3963e-04, -1.1697e-03,
+        #         4.2199e-01, -2.2843e-03,  7.5636e-03]], device='cuda:0')
+        # batch :  torch.Size([5, 8])
 
         if model.has_loss():
             y_pred, loss, _ = model(batch['x'], m=batch['m'], y=batch['y'])

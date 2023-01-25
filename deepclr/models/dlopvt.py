@@ -1076,7 +1076,8 @@ class ModelTransformer(TransformerModule):
 class TransformerBase(nn.Module):
     _transformer: ModelTransformer
     def __init__(self, input_dim: int, point_dim: int,
-                transformer_dict: Dict, append_features: bool = True, batch_norm: bool = False, **_kwargs: Any):
+                transformer_dict: Dict, label_type: LabelType, mlp: List[int], linear: List[int],
+                append_features: bool = True, batch_norm: bool = False, dropout: bool = False, **_kwargs: Any):
         super().__init__()
         self._point_dim = point_dim
         self._append_features = append_features
@@ -1084,8 +1085,50 @@ class TransformerBase(nn.Module):
         self.transformer_dict = transformer_dict
         self._transformer = ModelTransformer(transformer_dict, encoder_dim=transformer_dict.enc_dim, decoder_dim=transformer_dict.dec_dim)
 
+        self._label_type = label_type
+        # print("========Output LAYER TEST ==========\n")
+        print(label_type)
+        # layers
+
+        # dense head
+        mlp_layers = [self._input_dim - self._point_dim, *mlp]
+        # print("mlp_layers : ", mlp_layers)
+        self.pos_conv = Conv1dMultiLayer(mlp_layers, batch_norm=batch_norm)
+        # print("output_dim : ", self.conv.output_dim())
+        self.pos_linear = LinearMultiLayer(linear, batch_norm=batch_norm,
+                                       dropout_keep=dropout, dropout_last=True)
+        self.pos_output = nn.Linear(linear[-1], label_type.dim, bias=True)
+
+
+        self.rot_conv = Conv1dMultiLayer(mlp_layers, batch_norm=batch_norm)
+        # print("output_dim : ", self.conv.output_dim())
+        self.rot_linear = LinearMultiLayer(linear, batch_norm=batch_norm,
+                                       dropout_keep=dropout, dropout_last=True)
+        self.rot_output = nn.Linear(linear[-1], label_type.dim, bias=True)
+
+
+        # init weights
+        nn.init.xavier_uniform_(self.pos_output.weight)
+        nn.init.xavier_uniform_(self.rot_output.weight)
+
+        # bias
+        if label_type.bias is not None:
+            for i, v in enumerate(label_type.bias):
+                self.pos_output.bias.data[i] = v
+                self.rot_output.bias.data[i] = v
+
+    def _output_activation(self, x: torch.Tensor) -> torch.Tensor:
+        if self._label_type == LabelType.POSE3D_QUAT:
+            x[:, 3] = torch.sigmoid(x[:, 3])
+            x[:, 4:] = torch.tanh(x[:, 4:])
+        elif self._label_type == LabelType.POSE3D_DUAL_QUAT:
+            x[:, 0] = torch.sigmoid(x[:, 0])
+            x[:, 1:4] = torch.tanh(x[:, 1:4])
+        return x
+
     def output_dim(self) -> int:
-        return self._input_dim - self._point_dim
+        # return self._input_dim - self._point_dim
+        return self._label_type.dim
 
     def forward(self, embedded_flow: torch.Tensor) -> torch.Tensor:
         # # TODO : self-attention layer here
@@ -1116,10 +1159,31 @@ class TransformerBase(nn.Module):
 
         # trans_out = torch.cat((trans_xyz, dec_feature), dim=1)
         # print("trans_out", trans_out.shape)
+        
+        pos_x = self.pos_conv(prediction["pose_logits"])
+        pos_x, _ = torch.max(pos_x, dim=2)
+        # output shape
+        pos_x = self.pos_linear(pos_x)
+        pos_x = self.pos_output(pos_x)
+        pos_x = self._output_activation(pos_x)
 
-        return prediction["pose_logits"], prediction["rot_logits"] 
+        rot_x = self.rot_conv(prediction["rot_logits"])
+        rot_x, _ = torch.max(rot_x, dim=2)
+        # output shape
+        rot_x = self.rot_linear(rot_x)
+        rot_x = self.rot_output(rot_x)
+        rot_x = self._output_activation(rot_x)
+
+        # print("pos_x : ", pos_x)
+        # print("rot_x : ", rot_x)
+
+        # x = torch.cat(rot_x, pos_x, dim=2)
+        output_dict = {
+            "pos": pos_x,
+            "rot": rot_x,
+        }
+        return output_dict
         # return torch.cat((prediction["pose_logits"], prediction["trans_normalized"], prediction["rot_logits"]), dim=2)
-
 
 
 class Transformer(DLOPVTModule):
@@ -1132,84 +1196,6 @@ class Transformer(DLOPVTModule):
 
     def forward(self, clouds: torch.Tensor) -> torch.Tensor:
         return self._transformer(clouds)
-
-
-class OutputSimple(DLOPVTModule):
-    """Simple output module with mini-PointNet and fully connected layers."""
-    def __init__(self, input_dim: int, label_type: LabelType, mlp: List[int], linear: List[int],
-                 batch_norm: bool = False, dropout: bool = False, **_kwargs: Any):
-        super().__init__()
-        self._label_type = label_type
-        # print("========Output LAYER TEST ==========\n")
-        print(label_type)
-        # layers
-        mlp_layers = [input_dim, *mlp]
-        # print("mlp_layers : ", mlp_layers)
-        self.conv = Conv1dMultiLayer(mlp_layers, batch_norm=batch_norm)
-        # print("output_dim : ", self.conv.output_dim())
-        self.linear = LinearMultiLayer(linear, batch_norm=batch_norm,
-                                       dropout_keep=dropout, dropout_last=True)
-        self.output = nn.Linear(linear[-1], 4, bias=True)
-
-
-        self.rot_conv = Conv1dMultiLayer(mlp_layers, batch_norm=batch_norm)
-        # print("output_dim : ", self.conv.output_dim())
-        self.rot_linear = LinearMultiLayer(linear, batch_norm=batch_norm,
-                                       dropout_keep=dropout, dropout_last=True)
-        self.rot_output = nn.Linear(linear[-1], 4, bias=True)
-
-
-        # init weights
-        nn.init.xavier_uniform_(self.output.weight)
-        nn.init.xavier_uniform_(self.rot_output.weight)
-
-        # bias
-        if label_type.bias is not None:
-            for i, v in enumerate(label_type.bias):
-                self.output.bias.data[i] = v
-                self.rot_output.bias.data[i] = v
-
-    def output_dim(self) -> int:
-        return self._label_type.dim
-
-    def _output_activation(self, x: torch.Tensor) -> torch.Tensor:
-        if self._label_type == LabelType.POSE3D_QUAT:
-            x[:, 3] = torch.sigmoid(x[:, 3])
-            x[:, 4:] = torch.tanh(x[:, 4:])
-        elif self._label_type == LabelType.POSE3D_DUAL_QUAT:
-            x[:, 0] = torch.sigmoid(x[:, 0])
-            x[:, 1:4] = torch.tanh(x[:, 1:4])
-        return x
-
-    def forward(self, pos_x: torch.Tensor, rot_x: torch.Tensor) -> torch.Tensor:
-        # apply pointnet to get final feature vector
-        # print("========Output LAYER TEST ==========\n")
-        pos_x = self.conv(pos_x)
-        pos_x, _ = torch.max(pos_x, dim=2)
-        # output shape
-        pos_x = self.linear(pos_x)
-        pos_x = self.output(pos_x)
-        pos_x = self._output_activation(pos_x)
-
-        rot_x = self.conv(rot_x)
-        rot_x, _ = torch.max(rot_x, dim=2)
-        # output shape
-        rot_x = self.rot_linear(rot_x)
-        rot_x = self.rot_output(rot_x)
-        rot_x = self._output_activation(rot_x)
-
-        x = torch.cat(rot_x, pos_x, dim=2)
-
-
-        # print("5 : ", x.shape)
-        # 0 :  torch.Size([5, 259, 512])
-        # 1 :  torch.Size([5, 1024, 512])
-        # 2 :  torch.Size([5, 1024])
-        # 3 :  torch.Size([5, 256])
-        # 4 :  torch.Size([5, 8])
-        # 5 :  torch.Size([5, 8])
-
-        return x
 
 
 class TransformLossCalculation(nn.Module):
@@ -1362,7 +1348,7 @@ class DLOPVT(BaseModel):
     _loss_layer: Optional[DLOPVTLoss]
 
     def __init__(self, input_dim: int, label_type: LabelType, cloud_features: Config,
-                 merge: Config, transformer: Config, output: Config, transform: Optional[Config] = None,
+                 merge: Config, transformer: Config, transform: Optional[Config] = None,
                  loss: Optional[Config] = None, **kwargs: Any):
         super().__init__()
 
@@ -1372,8 +1358,8 @@ class DLOPVT(BaseModel):
         transform_layer_output_dim = input_dim if transform_layer is None else transform_layer.output_dim()
         cloud_feat_layer = init_module(cloud_features, input_dim=transform_layer_output_dim, **kwargs)
         merge_layer = init_module(merge, input_dim=cloud_feat_layer.output_dim(), **kwargs)
-        transformer_layer = init_module(transformer, input_dim=merge_layer.output_dim(), **kwargs)
-        output_layer = init_module(output, input_dim=transformer_layer.output_dim(), label_type=label_type, **kwargs)
+        transformer_layer = init_module(transformer, input_dim=merge_layer.output_dim(), label_type=label_type, **kwargs)
+        # output_layer = init_module(output, input_dim=transformer_layer.output_dim(), label_type=label_type, **kwargs)
         # print("transform_layer_output_dim : ", transform_layer_output_dim)
         # print("cloud_feat_layer_output_dim : ", cloud_feat_layer.output_dim())
         # print("merge_layer_output_dim : ", merge_layer.output_dim())
@@ -1386,10 +1372,10 @@ class DLOPVT(BaseModel):
 
         if transform_layer is None:
             self._cloud_layers = nn.Sequential(cloud_feat_layer)
-            self._merge_layers = nn.Sequential(merge_layer, transformer_layer, output_layer)
+            self._merge_layers = nn.Sequential(merge_layer, transformer_layer)
         else:
             self._cloud_layers = nn.Sequential(transform_layer, cloud_feat_layer)
-            self._merge_layers = nn.Sequential(merge_layer, transformer_layer, output_layer)
+            self._merge_layers = nn.Sequential(merge_layer, transformer_layer)
 
         if loss is not None:
             if isinstance(loss, list):
@@ -1424,23 +1410,27 @@ class DLOPVT(BaseModel):
 
         # merge
         model_output = self._merge_layers(x)
-        y_pred, model_aux = split_output(model_output)
+        # print(model_output)       
+        loss = None
+        debug_output = None
+        # y_pred, model_aux = split_output(model_output)
 
-        # loss
-        if self._loss_layer is not None and y is not None:
-            loss_output = self._loss_layer(y_pred, y, **model_aux)
-            loss, loss_aux = split_output(loss_output)
-            debug_output = {**model_aux, **loss_aux, 'x_aug': x} if debug else None
-        else:
-            loss = None
-            debug_output = None
+        # # loss
+        # if self._loss_layer is not None and y is not None:
+        #     loss_output = self._loss_layer(y_pred, y, **model_aux)
+        #     loss, loss_aux = split_output(loss_output)
+        #     debug_output = {**model_aux, **loss_aux, 'x_aug': x} if debug else None
+        # else:
+        #     loss = None
+        #     debug_output = None
 
-        # print("y_pred: ", y_pred ) 
-        # print("loss: ", loss ) 
-        # print("debug_output: ", debug_output ) 
-        
+        # print("y_pred: ", y_pred) 
+        # # print("loss: ", loss ) 
+        # # print("debug_output: ", debug_output ) 
+        # # loss:  None
+        # # debug_output:  None
 
-        return y_pred, loss, debug_output
+        return model_output, loss, debug_output
 
     def cloud_features(self, x: torch.Tensor, m: Optional[torch.Tensor] = None) -> torch.Tensor:
         # apply transforms

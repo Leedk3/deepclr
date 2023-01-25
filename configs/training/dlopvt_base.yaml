@@ -88,13 +88,17 @@ model:
 
           mlp_dropout : 0.1
 
-    output:
-      name: OutputSimple
-      params:
         mlp: [256, 512, 1024] #[256, 256, 512, 512, 1024]
         linear: [1024, 512, 256]
 
+    # output:
+    #   name: OutputSimple
+    #   params:
+    #     mlp: [256, 512, 1024] #[256, 256, 512, 512, 1024]
+    #     linear: [1024, 512, 256]
+
 metrics:
+  use_residual: True
   loss:
     - type: dual #trans
       weights: [5.0] #[1.0]
@@ -104,6 +108,11 @@ metrics:
       weights: [200.0] #[200.0]
       params:
         p: 2
+    - type: residual_rot
+      weights: [2.0] #[200.0]
+      params:
+        p: 2
+
   other:
     - type: quat_norm #rot #quat_norm
     - type: dual_constraint #trans_3d #dual_constraint
@@ -136,7 +145,7 @@ logging:
   add_graph: False
   summary_period: 20
   log_period: 200
-  checkpoint_period: 24000
+  checkpoint_period: 24000 #40 : test valid#
   checkpoint_n_saved: 10
-  validation_period: 24000
+  validation_period: 24000 #40 : test valid#
   running_average_alpha: 0.001

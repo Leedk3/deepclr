@@ -10,8 +10,8 @@ from ..utils.tensor import prepare_tensor
 from .quaternion import qconjugate, qmult
 
 
-MetricFunction = Callable[[Dict, torch.Tensor], torch.Tensor]
-GenericMetricFunction = Callable[[Dict, torch.Tensor, Optional[str]], torch.Tensor]
+MetricFunction = Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
+GenericMetricFunction = Callable[[torch.Tensor, torch.Tensor, Optional[str]], torch.Tensor]
 
 
 def _apply_reduction(x: torch.Tensor, reduction: Optional[str]) -> torch.Tensor:
@@ -51,9 +51,8 @@ def _normalize(x: torch.Tensor, label_type: LabelType, eps: float = 1e-8) -> tor
         raise RuntimeError("Unsupported label type for normalization")
 
 
-def trans_loss(source_dict: Dict, target: torch.Tensor, label_type: LabelType, p: int = 2,
+def trans_loss(source: torch.Tensor, target: torch.Tensor, label_type: LabelType, p: int = 2,
                reduction: Optional[str] = 'mean', eps: float = 1e-8) -> torch.Tensor:
-    source = source_dict['pos']
     """Translation (translation directly from label or dual quaternion vector) loss."""
     if label_type == LabelType.POSE3D_EULER or label_type == LabelType.POSE3D_QUAT:
         source_trans = source[:, :3]
@@ -72,10 +71,8 @@ def trans_loss(source_dict: Dict, target: torch.Tensor, label_type: LabelType, p
     return _apply_reduction(loss, reduction)
 
 
-def trans_3d_loss(source_dict: Dict, target: torch.Tensor, label_type: LabelType, p: int = 2,
+def trans_3d_loss(source: torch.Tensor, target: torch.Tensor, label_type: LabelType, p: int = 2,
                   reduction: Optional[str] = 'mean', eps: float = 1e-8) -> torch.Tensor:
-    source = source_dict['pos']
-
     """Translation in 3D coordinates [x, y, z] loss."""
     if label_type == LabelType.POSE3D_EULER or label_type == LabelType.POSE3D_QUAT:
         source_trans = source[:, :3]
@@ -99,10 +96,8 @@ def trans_3d_loss(source_dict: Dict, target: torch.Tensor, label_type: LabelType
     return _apply_reduction(loss, reduction)
 
 
-def dual_loss(source_dict: Dict, target: torch.Tensor, label_type: LabelType, p: int = 2,
+def dual_loss(source: torch.Tensor, target: torch.Tensor, label_type: LabelType, p: int = 2,
               reduction: Optional[str] = 'mean', eps: float = 1e-8) -> torch.Tensor:
-    source = source_dict['pos']
-
     """Dual quaternion vector loss."""
     if label_type == LabelType.POSE3D_QUAT:
         # translation quaternion
@@ -128,10 +123,8 @@ def dual_loss(source_dict: Dict, target: torch.Tensor, label_type: LabelType, p:
     return _apply_reduction(loss, reduction)
 
 
-def rot_loss(source_dict: Dict, target: torch.Tensor, label_type: LabelType, p: int = 2,
+def rot_loss(source: torch.Tensor, target: torch.Tensor, label_type: LabelType, p: int = 2,
              reduction: Optional[str] = 'mean', eps: float = 1e-8) -> torch.Tensor:
-    source = source_dict['pos']
-
     """Rotation vector (either euler angles or quaternion vector) loss."""
     if label_type == LabelType.POSE3D_EULER:
         source_rot = source[:, 3:]
@@ -155,47 +148,9 @@ def rot_loss(source_dict: Dict, target: torch.Tensor, label_type: LabelType, p: 
     loss = torch.norm(source_rot - target_rot, dim=1, p=p, keepdim=True)
     return _apply_reduction(loss, reduction)
 
-def residual_rot_loss(source_dict: Dict, target: torch.Tensor, label_type: LabelType, p: int = 2,
-             reduction: Optional[str] = 'mean', eps: float = 1e-8) -> torch.Tensor:
-    source = source_dict['pos']
-    residual_rot = source_dict['rot']
 
-    """Rotation vector (either euler angles or quaternion vector) loss."""
-    if label_type == LabelType.POSE3D_EULER:
-        source_rot = source[:, 3:]
-        residual_rot = residual_rot[:, 3:]
-        target_rot = target[:, 3:]
-
-    elif label_type == LabelType.POSE3D_QUAT:
-        source = _normalize(source, label_type, eps)
-        residual_rot = _normalize(residual_rot, label_type, eps)
-        target = _normalize(target, label_type, eps)
-        source_rot = source[:, 3:]
-        residual_rot = residual_rot[:, 3:]
-        target_rot = target[:, 3:]
-
-    elif label_type == LabelType.POSE3D_DUAL_QUAT:
-        source = _normalize(source, label_type, eps)
-        residual_rot = _normalize(residual_rot, label_type, eps)
-        target = _normalize(target, label_type, eps)
-        source_rot = source[:, :4]
-        residual_rot = residual_rot[:, :4]
-        target_rot = target[:, :4]
-
-    else:
-        raise RuntimeError("Unsupported label type for this loss type")
-
-
-
-    loss = torch.norm(residual_rot - (source_rot - target_rot), dim=1, p=p, keepdim=True)
-
-
-    return _apply_reduction(loss, reduction)
-
-def quat_norm_loss(source_dict: Dict, target: torch.Tensor, label_type: LabelType,
+def quat_norm_loss(source: torch.Tensor, target: torch.Tensor, label_type: LabelType,
                    reduction: Optional[str] = 'mean') -> torch.Tensor:
-    source = source_dict['pos']
-
     """Quaternion norm loss."""
     if label_type != LabelType.POSE3D_QUAT and label_type != LabelType.POSE3D_DUAL_QUAT:
         raise RuntimeError("Unsupported label type for this loss type.")
@@ -206,10 +161,8 @@ def quat_norm_loss(source_dict: Dict, target: torch.Tensor, label_type: LabelTyp
     return _apply_reduction(loss, reduction)
 
 
-def dual_constraint_loss(source_dict: Dict, _target: torch.Tensor, label_type: LabelType,
+def dual_constraint_loss(source: torch.Tensor, _target: torch.Tensor, label_type: LabelType,
                          reduction: Optional[str] = 'mean', eps: float = 1e-8) -> torch.Tensor:
-    source = source_dict['pos']
-
     """Dual quaternion constraint loss."""
     if label_type != LabelType.POSE3D_DUAL_QUAT:
         raise RuntimeError("Unsupported label type for this loss type.")
@@ -250,7 +203,6 @@ class MetricType(ConfigEnum):
     ROT = auto()
     QUAT_NORM = auto()
     DUAL_CONSTRAINT = auto()
-    RESIDUAL_ROT = auto()
 
     def fn(self, label_type: LabelType, weights: Optional[torch.Tensor] = None, **kwargs: Any) -> MetricFunction:
         func: Optional[GenericMetricFunction] = None
@@ -271,8 +223,6 @@ class MetricType(ConfigEnum):
             def func(source, target, red): return quat_norm_loss(source, target, label_type, reduction=red)
         elif self == MetricType.DUAL_CONSTRAINT:
             def func(source, target, red): return dual_constraint_loss(source, target, label_type, reduction=red)
-        elif self == MetricType.RESIDUAL_ROT:
-            def func(source, target, red): return residual_rot_loss(source, target, label_type, reduction=red, **kwargs)
 
         if func is not None:
             return _weighted_loss_fn(func, weights)

@@ -16,12 +16,15 @@ from ..solver.build import make_optimizer, make_scheduler
 from ..solver.schedulers import LRScheduler
 from ..utils.checkpoint import Checkpointer, load_checkpoint
 from ..utils.logging import create_logger, create_summary_writer
-from ..utils.metrics import MetricFunction, get_loss_fn, get_metric_fns
+from ..utils.metrics import MetricFunction, get_loss_fn, get_metric_fns, _normalize
 
 from .engines import EngineOutput, create_trainer, create_evaluator, y_from_engine, loss_from_engine
 from .loss import LossFn, LossForward
 
 from torchsummary import summary
+
+from scipy.spatial.transform import Rotation
+import numpy as np
 
 def train(cfg: Config) -> None:
     # create output dir
@@ -154,6 +157,7 @@ def run_trainer(
     evaluator = create_evaluator(model, metrics=val_metrics, device=device)
 
     print("metric : " , cfg.metrics)
+    print("cfg.metrics.use_residual : ", cfg.metrics.use_residual)
 
     # checkpointer
     checkpointer = Checkpointer(output_dir, n_saved=cfg.logging.checkpoint_n_saved, create_dir=True)
@@ -250,13 +254,41 @@ def run_trainer(
         def store_validation_output(engine):
             output: EngineOutput = engine.state.output
             y_pred, y_gt, aux = output['y_pred'], output['y'], output['aux']
-
+            # y_pred --> tensor --> Dict.
             for i in range(y_gt.shape[0]):
                 name = aux['d'][i]
                 timestamp = aux['t'][i][-1].item()
 
                 transform_gt = label_type.to_matrix(y_gt[i].cpu().numpy())
-                transform_pred = label_type.to_matrix(y_pred[i].cpu().numpy())
+                merged_pred = y_pred['pos'][i] # rot + trans 
+
+                if cfg.metrics.use_residual:
+                    # residual_rot + pos
+                    quat_pos = y_pred['pos'][i][:4].cpu().numpy()
+                    quat_rot = y_pred['rot'][i][:4].cpu().numpy()
+
+                    quat_pos = Rotation.from_quat(np.array([*quat_pos])).as_quat()
+                    quat_rot = Rotation.from_quat(np.array([*quat_rot])).as_quat()
+                    quat_merge = quat_rot * quat_pos
+                    quat_merge_norm = quat_merge / np.linalg.norm(quat_merge, axis = -1, keepdims=True)
+                    
+                    # print("quat_pos : ", quat_pos)
+                    # print("quat_rot : ", quat_rot)
+                    # print("quat_merge : ", quat_merge)
+                    # print("quat_merge_norm : ", quat_merge_norm)
+
+                    merged_pred[0] = quat_merge_norm[0]
+                    merged_pred[1] = quat_merge_norm[1] 
+                    merged_pred[2] = quat_merge_norm[2] 
+                    merged_pred[3] = quat_merge_norm[3] 
+
+                # print("y_pred : ", y_pred['pos'][i])
+                # print("merged_pred : ", merged_pred)
+
+                # merged_pred_norm = torch.norm(merged_pred[:4], p=2, dim=1, keepdim=True) + 1e-8
+                # merged_pred = merged_pred / merged_pred_norm
+
+                transform_pred = label_type.to_matrix(merged_pred.cpu().numpy())
 
                 eval_export.add_transforms(name, timestamp, transform_pred, transform_gt)
 
