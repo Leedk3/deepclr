@@ -267,26 +267,16 @@ def run_trainer(
                     quat_pos = y_pred['pos'][i][:4].cpu().numpy()
                     quat_rot = y_pred['rot'][i][:4].cpu().numpy()
 
-                    quat_pos = Rotation.from_quat(np.array([*quat_pos])).as_quat()
-                    quat_rot = Rotation.from_quat(np.array([*quat_rot])).as_quat()
+                    quat_pos = Rotation.from_quat(np.array([*quat_pos]))
+                    quat_rot = Rotation.from_quat(np.array([*quat_rot]))
                     quat_merge = quat_rot * quat_pos
-                    quat_merge_norm = quat_merge / np.linalg.norm(quat_merge, axis = -1, keepdims=True)
+                    quat_merge = quat_merge.as_quat()
+                    # quat_merge_norm = quat_merge / np.linalg.norm(quat_merge, axis = -1, keepdims=True)
                     
-                    # print("quat_pos : ", quat_pos)
-                    # print("quat_rot : ", quat_rot)
-                    # print("quat_merge : ", quat_merge)
-                    # print("quat_merge_norm : ", quat_merge_norm)
-
-                    merged_pred[0] = quat_merge_norm[0]
-                    merged_pred[1] = quat_merge_norm[1] 
-                    merged_pred[2] = quat_merge_norm[2] 
-                    merged_pred[3] = quat_merge_norm[3] 
-
-                # print("y_pred : ", y_pred['pos'][i])
-                # print("merged_pred : ", merged_pred)
-
-                # merged_pred_norm = torch.norm(merged_pred[:4], p=2, dim=1, keepdim=True) + 1e-8
-                # merged_pred = merged_pred / merged_pred_norm
+                    merged_pred[0] = quat_merge[0]
+                    merged_pred[1] = quat_merge[1] 
+                    merged_pred[2] = quat_merge[2] 
+                    merged_pred[3] = quat_merge[3] 
 
                 transform_pred = label_type.to_matrix(merged_pred.cpu().numpy())
 

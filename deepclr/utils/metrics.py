@@ -9,6 +9,8 @@ from ..data.labels import LabelType
 from ..utils.tensor import prepare_tensor
 from .quaternion import qconjugate, qmult
 
+from scipy.spatial.transform import Rotation
+import numpy as np
 
 MetricFunction = Callable[[Dict, torch.Tensor], torch.Tensor]
 GenericMetricFunction = Callable[[Dict, torch.Tensor, Optional[str]], torch.Tensor]
@@ -158,37 +160,62 @@ def rot_loss(source_dict: Dict, target: torch.Tensor, label_type: LabelType, p: 
 def residual_rot_loss(source_dict: Dict, target: torch.Tensor, label_type: LabelType, p: int = 2,
              reduction: Optional[str] = 'mean', eps: float = 1e-8) -> torch.Tensor:
     source = source_dict['pos']
-    residual_rot = source_dict['rot']
+    residual = source_dict['rot']
 
     """Rotation vector (either euler angles or quaternion vector) loss."""
     if label_type == LabelType.POSE3D_EULER:
         source_rot = source[:, 3:]
-        residual_rot = residual_rot[:, 3:]
+        residual_rot = residual[:, 3:]
         target_rot = target[:, 3:]
 
     elif label_type == LabelType.POSE3D_QUAT:
         source = _normalize(source, label_type, eps)
-        residual_rot = _normalize(residual_rot, label_type, eps)
+        residual = _normalize(residual, label_type, eps)
         target = _normalize(target, label_type, eps)
         source_rot = source[:, 3:]
-        residual_rot = residual_rot[:, 3:]
+        residual_rot = residual[:, 3:]
         target_rot = target[:, 3:]
 
     elif label_type == LabelType.POSE3D_DUAL_QUAT:
         source = _normalize(source, label_type, eps)
-        residual_rot = _normalize(residual_rot, label_type, eps)
+        residual = _normalize(residual, label_type, eps)
         target = _normalize(target, label_type, eps)
         source_rot = source[:, :4]
-        residual_rot = residual_rot[:, :4]
+        residual_rot = residual[:, :4]
         target_rot = target[:, :4]
-
+        target_residual_rot = target[:, :4]
     else:
         raise RuntimeError("Unsupported label type for this loss type")
 
+    target_np = target_rot.detach().cpu().numpy()
+    source_np = source_rot.detach().cpu().numpy()
+
+    target_quat = Rotation.from_quat(np.array([*target_np]))
+    source_quat = Rotation.from_quat(np.array([*source_np]))
+    target_residual_quat_np = target_quat * source_quat.inv() #target
+    target_residual_quat_np = target_residual_quat_np.as_quat() #target
+    target_residual_rot = torch.from_numpy(target_residual_quat_np).float().to(device=target_residual_rot.device)
 
 
-    loss = torch.norm(residual_rot - (source_rot - target_rot), dim=1, p=p, keepdim=True)
+    target_test = Rotation.from_quat(np.array([*target_residual_quat_np])) * Rotation.from_quat(np.array([*source_np]))
 
+    # residual_quat_norm = target_residual_quat_np / np.linalg.norm(target_residual_quat_np, axis = -1, keepdims=True)
+    # merged_pred[0] = quat_merge_norm[0]
+    # merged_pred[1] = quat_merge_norm[1] 
+    # merged_pred[2] = quat_merge_norm[2] 
+    # merged_pred[3] = quat_merge_norm[3] 
+
+    loss = torch.norm(residual_rot - target_residual_rot, dim=1, p=p, keepdim=True)
+    # print("target_residual_quat_np : " , target_residual_quat_np)
+    # print("target_residual_rot : ", target_residual_rot)
+
+    # # print("source_rot : " , source_rot)
+    # print("residual_rot : " , residual_rot)
+    # print("target_residual_rot : " , target_residual_rot)
+    # # print("target_test : ", target_test.as_quat())
+    # print("target_quat : " , target_quat.as_quat())
+    # print("source_quat : " , source_quat.as_quat())
+    # print("residual_loss : " , loss)
 
     return _apply_reduction(loss, reduction)
 
