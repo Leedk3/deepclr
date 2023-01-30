@@ -1,4 +1,4 @@
-base_dir: /home/usrg/deepclr/models #'${MODEL_PATH}'
+base_dir: /home/sungwon-nah/deepclr/models #'${MODEL_PATH}'
 device: cuda
 
 data_loader:
@@ -64,7 +64,7 @@ model:
       name: MotionEmbedding
       params:
         k: 20
-        radius: 3.0
+        radius: 15.0 #3.0 SW
         mlp: [128, 128, 256]
 
     transformer:
@@ -98,12 +98,12 @@ model:
     #     linear: [1024, 512, 256]
 
 metrics:
-  use_residual: True
+  use_residual: False #True SW
   loss:
-    - type: dual #trans
-      weights: [5.0] #[1.0]
+    - type: trans #trans
+      weights: [1.0] #[1.0]
       params:
-        p: 1 #2
+        p: 2 #2
     - type: rot
       weights: [200.0] #[200.0]
       params:

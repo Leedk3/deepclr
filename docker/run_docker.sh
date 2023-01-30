@@ -146,6 +146,7 @@ if [ "${USER}" = 1 ]; then
     -v /etc/group:/etc/group:ro
     --user "$(id -u):$(id -g)"
     -v "${HOME}:${HOME}"
+    # -v /home/sungwon-nah/deepclr:/home/sungwon-nah/deepclr:ro
   )
 else
   DOCKER_ARGS+=(
@@ -154,9 +155,12 @@ else
 fi
 
 # my statement
-DOCKER_ARGS+=(-v /home/usrg/deepclr/deepclr.egg-info:/home/usrg/deepclr/deepclr.egg-info:rw)
+# DOCKER_ARGS+=(-v /home/usrg/deepclr/deepclr.egg-info:/home/usrg/deepclr/deepclr.egg-info:rw)
+DOCKER_ARGS+=(-v /home/sungwon-nah/deepclr/deepclr.egg-info:/home/sungwon-nah/deepclr/deepclr.egg-info:rw)
+DOCKER_ARGS+=(-v /media/sungwon-nah/2022Crucial2/dlopvt_dataset/dataset:/home/sungwon-nah/deepclr/dataset:rw)
 # DOCKER_ARGS+=(-v /home/usrg/Data/Dataset/3D_data/localize/dataset:/home/usrg/deepclr/data/original:rw)
-DOCKER_ARGS+=(-e KITTI_PATH="/home/usrg/Data/Dataset/3D_data/localize/dataset")
+# DOCKER_ARGS+=(-e KITTI_PATH="/home/usrg/Data/Dataset/3D_data/localize/dataset")
+DOCKER_ARGS+=(-e KITTI_PATH="/home/sungwon-nah/deepclr/dataset")
 # DOCKER_ARGS+=(-e MODLE_PATH=/home/usrg/deepclr/models)
 DOCKER_ARGS+=(--network=host)
 

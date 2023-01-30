@@ -1,4 +1,4 @@
-export MODEL_PATH=/home/usrg/deepclr/models
+export MODEL_PATH=/home/sungwon-nah/deepclr/models
 MODEL=20230110_213507_dlopvt_00-06
 WEIGHT=weights.tar #default : weights.tar
 
