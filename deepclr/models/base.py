@@ -68,7 +68,7 @@ class ModelInferenceHelper:
 
         motion_embedding_module = list(after_submodel.children())[0]
         transformer_module = list(after_submodel.children())[1]
-        output_module = list(after_submodel.children())[2]
+        # output_module = list(after_submodel.children())[2]
         self._submodel = nn.Sequential(motion_embedding_module)
         
         # self._submodel = nn.Sequential(motion_embedding_module, transformer_module)
@@ -120,7 +120,7 @@ class ModelInferenceHelper:
                     x = self.stack(self._state, source)
                     y, loss, debug_output = self._model.forward(x, is_feat=True)
                     self._state = source
-                    return y[0, :]
+                    return y['pos'][0, :]
 
             else:
                 if template is None:
@@ -128,7 +128,7 @@ class ModelInferenceHelper:
 
                 x = self.stack(template, source)
                 y, _, _ = self._model.forward(x, is_feat=False)
-                return y[0, :]
+                return y['pos'][0, :]
 
     def partial_predict(self, source: torch.Tensor, template: Optional[torch.Tensor] = None) -> Optional[torch.Tensor]:
         """

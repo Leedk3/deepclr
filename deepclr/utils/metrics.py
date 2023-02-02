@@ -208,16 +208,29 @@ def residual_rot_loss(source_dict: Dict, target: torch.Tensor, label_type: Label
     loss = torch.norm(residual_rot - target_residual_rot, dim=1, p=p, keepdim=True)
     # print("target_residual_quat_np : " , target_residual_quat_np)
     # print("target_residual_rot : ", target_residual_rot)
+    
+    #debug
+    predict_np = residual_rot.detach().cpu().numpy()
+    predict_rot = Rotation.from_quat(np.array([*predict_np]))
+    predict_merge = predict_rot * source_quat
+    predict_merge = predict_merge.as_quat()
+    predict_merge = torch.from_numpy(predict_merge).float().to(device=target_residual_rot.device)
+    
+    loss2 = torch.norm(predict_merge - target_rot, dim=1, p=p, keepdim=True)
 
     # # print("source_rot : " , source_rot)
-    # print("residual_rot : " , residual_rot)
+    # print("predict residual_rot : " , residual_rot)
     # print("target_residual_rot : " , target_residual_rot)
-    # # print("target_test : ", target_test.as_quat())
+    # # # print("target_test : ", target_test.as_quat())
+    # print("precit_merge : " , predict_merge)
     # print("target_quat : " , target_quat.as_quat())
     # print("source_quat : " , source_quat.as_quat())
     # print("residual_loss : " , loss)
+    # print("loss2 : " , loss2)
 
-    return _apply_reduction(loss, reduction)
+    # return _apply_reduction(loss, reduction)
+    return _apply_reduction(loss2, reduction)
+
 
 def quat_norm_loss(source_dict: Dict, target: torch.Tensor, label_type: LabelType,
                    reduction: Optional[str] = 'mean') -> torch.Tensor:
