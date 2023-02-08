@@ -16,7 +16,7 @@ from ..solver.build import make_optimizer, make_scheduler
 from ..solver.schedulers import LRScheduler
 from ..utils.checkpoint import Checkpointer, load_checkpoint
 from ..utils.logging import create_logger, create_summary_writer
-from ..utils.metrics import MetricFunction, get_loss_fn, get_metric_fns, _normalize
+from ..utils.metrics import MetricFunction, get_loss_fn, get_metric_fns, _normalize, MetricType
 
 from .engines import EngineOutput, create_trainer, create_evaluator, y_from_engine, loss_from_engine
 from .loss import LossFn, LossForward
@@ -156,7 +156,14 @@ def run_trainer(
                              accumulation_steps=cfg.optimizer.accumulation_steps)
     evaluator = create_evaluator(model, metrics=val_metrics, device=device)
 
+    if cfg.metrics.use_residual is False:
+        for loss_ in cfg.metrics.loss:
+            if loss_['type'] == MetricType.RESIDUAL_ROT:
+                print(loss_['type'])
+                cfg.metrics.loss.remove(loss_)
+
     print("metric : " , cfg.metrics)
+    print("cfg.metrics.loss : ", cfg.metrics.loss)
     print("cfg.metrics.use_residual : ", cfg.metrics.use_residual)
 
     # checkpointer

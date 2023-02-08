@@ -108,10 +108,10 @@ metrics:
       weights: [200.0] #[200.0]
       params:
         p: 2
-    # - type: residual_rot
-    #   weights: [2.0] #[200.0]
-    #   params:
-    #     p: 2
+    - type: residual_rot
+      weights: [2.0] #[200.0]
+      params:
+        p: 1
 
   other:
     - type: quat_norm #rot #quat_norm
