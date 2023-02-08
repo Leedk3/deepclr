@@ -123,7 +123,7 @@ def main():
         if not helper.has_state():
             helper.predict(template)
         y_pred = helper.predict(source)
-        # print("partial_predict")
+        # print("partial_predict", y_pred)
         source_partial = helper.partial_predict(source).squeeze(0)
         source_partial = source_partial.detach().cpu().numpy()
         source_partial = source_partial[:3, :] #feature

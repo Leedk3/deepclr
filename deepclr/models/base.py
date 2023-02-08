@@ -62,15 +62,17 @@ class ModelInferenceHelper:
         self._is_sequential = is_sequential
         self._state: Optional[torch.Tensor] = None
 
+        # print("model:", model)
+
         # debug
         feature_extraction_module = nn.Sequential(*list(model.children())[0])
         after_submodel = nn.Sequential(*list(model.children())[1]) #after feature abstraction
 
         motion_embedding_module = list(after_submodel.children())[0]
-        transformer_module = list(after_submodel.children())[1]
+        # transformer_module = list(after_submodel.children())[1]
         # output_module = list(after_submodel.children())[2]
-        self._submodel = nn.Sequential(motion_embedding_module)
-        
+        self._submodel = nn.Sequential(feature_extraction_module, motion_embedding_module)
+        # print("submodel : ", self._submodel)
         # self._submodel = nn.Sequential(motion_embedding_module, transformer_module)
 
     def has_state(self) -> bool:

@@ -98,7 +98,7 @@ model:
     #     linear: [1024, 512, 256]
 
 metrics:
-  use_residual: False
+  use_residual: False #True
   loss:
     - type: dual #trans
       weights: [5.0] #[1.0]
@@ -108,10 +108,10 @@ metrics:
       weights: [200.0] #[200.0]
       params:
         p: 2
-    - type: residual_rot
-      weights: [2.0] #[200.0]
-      params:
-        p: 1
+    # - type: residual_rot #if use_residual is False, it is automatically not considered. 
+    #   weights: [2.0] #[200.0]
+    #   params:
+    #     p: 1
 
   other:
     - type: quat_norm #rot #quat_norm

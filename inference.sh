@@ -1,6 +1,6 @@
 export MODEL_PATH=/home/usrg/deepclr/models
-MODEL=20230130_173052_dlopvt_00-06
-WEIGHT=weights_792000.tar #default : weights.tar
+MODEL=20230208_140729_dlopvt_00-06
+WEIGHT=weights.tar #default : weights.tar
 
 # kitti 07-10 validation set
 # ./scripts/inference.py ./configs/scenarios/kitti_07-10.yaml $MODEL ~/scenarios --weights $WEIGHT

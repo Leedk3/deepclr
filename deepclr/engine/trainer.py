@@ -156,6 +156,8 @@ def run_trainer(
                              accumulation_steps=cfg.optimizer.accumulation_steps)
     evaluator = create_evaluator(model, metrics=val_metrics, device=device)
 
+
+    #if use_residual is False, it is automatically not considered.
     if cfg.metrics.use_residual is False:
         for loss_ in cfg.metrics.loss:
             if loss_['type'] == MetricType.RESIDUAL_ROT:
