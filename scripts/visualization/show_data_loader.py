@@ -19,14 +19,15 @@ def main():
     loader = make_data_loader(cfg, is_train=args.training)
 
     # visualizer
-    visualizer = PointCloudVisualizer()
-    visualizer.set_window_size(640, 480)
-    visualizer.set_background(0.5, 0.5, 0.5)
-    visualizer.set_ground_plane(True, color=[0, 0, 0], alpha=0.5)
+    # visualizer = PointCloudVisualizer()
+    # visualizer.set_window_size(640, 480)
+    # visualizer.set_background(0.5, 0.5, 0.5)
+    # visualizer.set_ground_plane(True, color=[0, 0, 0], alpha=0.5)
 
     for sample in loader:
         print("Next sample...")
         x, y, m = sample['x'], sample['y'], sample['m']
+        print(x.size())
         dim = int(x.shape[0] / 2)
         for i in range(dim):
             cloud0 = x[i, :, :3]
@@ -41,10 +42,10 @@ def main():
                 cloud1 = transform_point_cloud(cloud1, aug1)
             cloud1t = transform_point_cloud(cloud1, transform)
 
-            visualizer.update_point_cloud('cloud0', cloud0, color=[1, 1, 1], size=3)
-            visualizer.update_point_cloud('cloud1', cloud1, color=[1, 0, 0], size=3)
-            visualizer.update_point_cloud('cloud1t', cloud1t, color=[0, 1, 0], size=3)
-            visualizer.spin_once(1000)
+            # visualizer.update_point_cloud('cloud0', cloud0, color=[1, 1, 1], size=3)
+            # visualizer.update_point_cloud('cloud1', cloud1, color=[1, 0, 0], size=3)
+            # visualizer.update_point_cloud('cloud1t', cloud1t, color=[0, 1, 0], size=3)
+            # visualizer.spin_once(1000)
 
 
 if __name__ == '__main__':

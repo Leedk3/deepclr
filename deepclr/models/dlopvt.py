@@ -1032,11 +1032,14 @@ class ModelTransformer(TransformerModule):
         max_xyz = pre_enc_xyz.max(dim=1)[0]
         # print(min_xyz)
         # print(max_xyz)
+        # print(min_xyz.shape)
+        # print(max_xyz.shape)
 
         point_cloud_dims = [
             min_xyz,
             max_xyz,
         ]
+        # print(point_cloud_dims)
 
         query_xyz, query_embed = self.get_query_embeddings(enc_xyz, point_cloud_dims)
 

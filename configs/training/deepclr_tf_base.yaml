@@ -28,30 +28,33 @@ model:
     merge:
       name: MotionEmbedding
       params:
-        k: 20
+        k: 0
         radius: 10.0
         mlp: [128, 128, 256]
 
-    transformer:
-      name: Transformer
-      params:
-        transformer_dict :
-          NUM_LAYER : 3
-          NUM_HEAD :  4
-          enc_nlayers : 3
-          enc_dim : 256
-          enc_nhead : 4
-          enc_ffn_dim : 256
-          enc_dropout : 0.1
-          enc_activation : "relu"
+    # transformer:
+    #   name: Transformer
+    #   params:
+    #     transformer_dict :
+    #       NUM_LAYER : 3
+    #       NUM_HEAD :  4
+    #       enc_nlayers : 3
+    #       enc_dim : 256
+    #       enc_nhead : 4
+    #       enc_ffn_dim : 256
+    #       enc_dropout : 0.1
+    #       enc_activation : "relu"
 
-          dec_nlayers : 3
-          dec_dim : 256
-          dec_nhead : 4
-          dec_ffn_dim : 256
-          dec_dropout : 0.1
+    #       dec_nlayers : 3
+    #       dec_dim : 256
+    #       dec_nhead : 4
+    #       dec_ffn_dim : 256
+    #       dec_dropout : 0.1
 
-          mlp_dropout : 0.1
+    #       mlp_dropout : 0.1
+
+    #     mlp: [256, 512, 1024] #[256, 256, 512, 512, 1024]
+    #     linear: [1024, 512, 256]
 
     output:
       name: OutputSimple
@@ -60,15 +63,21 @@ model:
         linear: [1024, 512, 256]
 
 metrics:
+  use_residual: False
   loss:
     - type: trans
-      weights: [1.0]
+      weights: [5.0] #[1.0]
       params:
-        p: 2
+        p: 1 #2
     - type: rot
-      weights: [200.0]
+      weights: [200.0] #[200.0]
       params:
         p: 2
+    # - type: residual_rot #if use_residual is False, it is automatically not considered. 
+    #   weights: [1.0] #[200.0]
+    #   params:
+    #     p: 1
+
   other:
     - type: quat_norm
     - type: trans_3d #dual_constraint

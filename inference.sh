@@ -1,5 +1,5 @@
 export MODEL_PATH=/home/usrg/deepclr/models
-MODEL=20230208_140729_dlopvt_00-06
+MODEL=20230619_214148_deepclr_tf_00-06
 WEIGHT=weights.tar #default : weights.tar
 
 # kitti 07-10 validation set

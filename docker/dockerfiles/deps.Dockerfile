@@ -48,9 +48,9 @@ RUN apt-get install -q -y --no-install-recommends \
     libxmlsec1-dev \
     libffi-dev \
     liblzma-dev \
-    sudo
-    # && apt-get clean \
-    # && rm -rf /var/lib/apt/lists/*
+    sudo \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 # Python dependencies
 COPY requirements.txt /tmp/requirements.txt

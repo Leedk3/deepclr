@@ -21,7 +21,7 @@ Sphinx==3.5.4
 sphinx-rtd-theme==0.5.2
 tensorboardX==2.2
 torch==1.8.1
-torch-cluster==1.5.9
+torch-cluster==1.5.9 -f https://pytorch-geometric.com/whl/torch-1.8.0+cu111.html
 torchgeometry==0.1.2
 torchvision==0.9.1
 transforms3d==0.3.1
@@ -31,6 +31,16 @@ protobuf==3.20.*
 traitlets==5.5.0
 Jinja2==3.0
 ipython==7.23.1
+
+spconv-cu111
+git+https://github.com/klintan/pypcd.git
+pillow==8.3.2
+trimesh
+torchsummary
+scikit-learn
+plotly
+dash
+pyorbital
 
 # ipykernel 6.17.1 requires ipython>=7.23.1, but you'll have ipython 7.21.0 which is incompatible.
 # ipykernel 6.17.1 requires traitlets>=5.1.0, but you'll have traitlets 5.0.5 which is incompatible.
