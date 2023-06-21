@@ -12,18 +12,22 @@ from .deepclr import DeepCLR
 from .pvnavi import PVNAVI
 from .dlopvt import DLOPVT
 from .deepclr_transformer import DEEPCLRTF
+from .implicit import IMPLICIT
 
 class ModelType(ConfigEnum):
     DEEPCLR = auto()
     PVNAVI = auto()
     DLOPVT = auto()
     DEEPCLRTF = auto()
+    IMPLICIT = auto()
 
     def get_class(self) -> Type[BaseModel]:
         if self == ModelType.DEEPCLR:
             return DeepCLR
         elif self == ModelType.DEEPCLRTF:
             return DEEPCLRTF
+        elif self == ModelType.IMPLICIT:
+            return IMPLICIT
         elif self == ModelType.PVNAVI:
             return PVNAVI
         elif self == ModelType.DLOPVT:
