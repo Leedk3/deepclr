@@ -28,7 +28,7 @@ model:
     merge:
       name: MotionEmbedding
       params:
-        k: 0
+        k: 20
         radius: 10.0
         mlp: [128, 128, 256]
 
@@ -59,16 +59,19 @@ model:
     output:
       name: OutputSimple
       params:
-        mlp: [256, 256, 512, 512, 1024]
-        linear: [1024, 512, 256]
+        mlp: [512, 512, 1024, 1024, 2048]
+        linear: [2048, 1024, 512, 256]
+
+        # mlp: [256, 256, 512, 512, 1024]
+        # linear: [1024, 512, 256]
 
 metrics:
   use_residual: False
   loss:
     - type: trans
-      weights: [5.0] #[1.0]
+      weights: [1.0] #[1.0]
       params:
-        p: 1 #2
+        p: 2 #2
     - type: rot
       weights: [200.0] #[200.0]
       params:

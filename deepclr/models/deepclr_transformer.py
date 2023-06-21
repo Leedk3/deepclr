@@ -199,6 +199,38 @@ class PositionalEncodingGrouping(GroupingModule):
 
         return pts0, pts1, encoded_pts0, encoded_pts1
 
+class GlobalGrouping(GroupingModule):
+    """Group points over the whole point cloud."""
+    def __init__(self):
+        super().__init__()
+
+    @staticmethod
+    def _prepare_batch(cloud: torch.Tensor) -> torch.Tensor:
+        pts = cloud.transpose(1, 2).contiguous().view(-1, cloud.shape[1])
+        return pts
+
+    def forward(self, cloud0: torch.Tensor, cloud1: torch.Tensor) \
+            -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        # prepare data
+        pts0 = self._prepare_batch(cloud0)
+        pts1 = self._prepare_batch(cloud1)
+
+        # select all points from pts2 for each point of pts1
+        idx0 = pts0.new_empty((pts0.shape[0], 1), dtype=torch.long)
+        torch.arange(pts0.shape[0], out=idx0)
+        idx0 = idx0.repeat(1, cloud1.shape[2])
+
+        idx1 = pts1.new_empty((1, pts1.shape[0]), dtype=torch.long)
+        torch.arange(pts1.shape[0], out=idx1)
+        idx1 = idx1.view(cloud1.shape[0], -1).repeat(1, cloud0.shape[2]).view(idx0.shape)
+
+        group_index = torch.stack((idx0, idx1))
+
+        # get group data [group, point_dim, group points] and subtract sample (center) pos
+        group_pts0 = pts0[group_index[0, ...]]
+        group_pts1 = pts1[group_index[1, ...]]
+
+        return pts0, pts1, group_pts0, group_pts1
 
 
 class KnnGrouping(GroupingModule):
@@ -285,23 +317,22 @@ class MotionEmbeddingBase(nn.Module):
         print("point_dim + 2 * (input_dim - point_dim) : " , point_dim + 2 * (input_dim - point_dim))
         # self._transformer = Transformer(transformer.NUM_KEYPOINTS, point_dim + 2 * (input_dim - point_dim), transformer.NUM_LAYER, transformer.NUM_HEAD)
         # self._transformer = ModelTransformer(transformer, encoder_dim=transformer.enc_dim, decoder_dim=transformer.dec_dim)
+        self._pe = PositionalEncodingGrouping(point_dim, input_dim)
 
         if k == 0:
-            self._grouping = PositionalEncodingGrouping(point_dim, input_dim)
+            self._grouping = GlobalGrouping()
         else:
             self._grouping = KnnGrouping(point_dim, k)
 
-        # if self._append_features:
-        #     mlp_layers = [point_dim + 2 * (input_dim - point_dim), *mlp]
-        # else:
-        mlp_layers = [2 * (input_dim - point_dim), *mlp]
+        pe_mlp_layers = [2 * (input_dim - point_dim), *mlp]
 
-        # if self._append_features:
-        #     mlp_layers = [point_dim + 2 * (input_dim - point_dim), *mlp]
-        # else:
-        #     mlp_layers = [input_dim, *mlp]
+        if self._append_features:
+            mlp_layers = [point_dim + 2 * (input_dim - point_dim), *mlp]
+        else:
+            mlp_layers = [input_dim, *mlp]
         # print("mlp_layers : ", mlp_layers) # [3 + 64 x 2, 128, 128, 256]
         self._conv = Conv1dMultiLayer(mlp_layers, batch_norm=batch_norm)
+        self._pe_conv = Conv1dMultiLayer(pe_mlp_layers, batch_norm=batch_norm)
 
         pts_diff_mlp_layers = [point_dim , *mlp]
         self._pts_diff_conv = Conv1dMultiLayer(pts_diff_mlp_layers, batch_norm=batch_norm)
@@ -312,22 +343,21 @@ class MotionEmbeddingBase(nn.Module):
 
     def output_dim(self) -> int:
         print("self._point_dim + self._conv.output_dim() : " , self._point_dim + self._conv.output_dim())
-        return self._point_dim + self._conv.output_dim()
+        return self._point_dim + self._conv.output_dim() + self._pe_conv.output_dim()
 
 
     def forward(self, clouds0: torch.Tensor, clouds1: torch.Tensor) -> torch.Tensor:
         # print("========Embedding LAYER TEST ==========\n")
         # group
         pts0, pts1, group_pts0, group_pts1 = self._grouping(clouds0, clouds1)
-        # PE
         # print("pts0 : " , pts0.shape)
         # print("pts1 : " , pts1.shape)
-        # print("group_pts0 : " , group_pts0.shape)
-        # print("group_pts1 : " , group_pts1.shape)
+        # print("encoded_pts0 : " , encoded_pts0.shape)
+        # print("encoded_pts1 : " , encoded_pts1.shape)
         # pts0 :  torch.Size([2, 1024, 67])                                                              
         # pts1 :  torch.Size([2, 1024, 67])                                                              
-        # group_pts0 :  torch.Size([2, 64, 1024])                                                        
-        # group_pts1 :  torch.Size([2, 64, 1024]) 
+        # encoded_pts0 :  torch.Size([2, 64, 1024])                                                        
+        # encoded_pts1 :  torch.Size([2, 64, 1024]) 
 
         # print(group_pts0)
         # merge
@@ -346,45 +376,57 @@ class MotionEmbeddingBase(nn.Module):
         # group_pts1 :  torch.Size([2048, 10, 67])
         # out :  torch.Size([2048, 259])
 
-        # if self._append_features:
-        #     merged = torch.cat((pos_diff, group_pts0[:, :, self._point_dim:], group_pts1[:, :, self._point_dim:]),
-        #                        dim=2)
-        # else:
-        #     merged = torch.cat((pos_diff, group_pts1[:, :, self._point_dim:] - group_pts0[:, :, self._point_dim:]),
-        #                        dim=2)
+        if self._append_features:
+            merged = torch.cat((pos_diff, group_pts0[:, :, self._point_dim:], group_pts1[:, :, self._point_dim:]),
+                               dim=2)
+        else:
+            merged = torch.cat((pos_diff, group_pts1[:, :, self._point_dim:] - group_pts0[:, :, self._point_dim:]),
+                               dim=2)
 
-        merged = torch.cat((group_pts1, group_pts0), dim=1)
-        # print(merged.shape)
-        merged = merged.permute(2, 1, 0)
-        # print(merged.shape)
+        # merged = torch.cat((group_pts1, group_pts0), dim=1)
+        # print("merged 1 : ", merged.shape)
+        # merged = merged.permute(2, 1, 0)
+        # print("merged 2 : ", merged.shape)
 
         # run pointnet
         # print("merged : " , merged.shape)
-        # merged = merged.transpose(1, 2)
+        merged = merged.transpose(1, 2)
         # print("merged 2: " , merged.shape)
         merged_feat = self._conv(merged)
         # print("merged_feat : " , merged_feat.shape)
 
         # radius
-        # if self._radius > 0.0:
-        #     pos_diff_norm = torch.norm(pos_diff, dim=2)
-        #     mask = pos_diff_norm >= self._radius
-        #     merged_feat.masked_scatter_(mask.unsqueeze(1), merged_feat.new_zeros(merged_feat.shape))
+        if self._radius > 0.0:
+            pos_diff_norm = torch.norm(pos_diff, dim=2)
+            mask = pos_diff_norm >= self._radius
+            merged_feat.masked_scatter_(mask.unsqueeze(1), merged_feat.new_zeros(merged_feat.shape))
 
         # print("merged_feat 2: " , merged_feat.shape)
-        # feat, _ = torch.max(merged_feat, dim=2)
-        feat = merged_feat.transpose(1, 2).contiguous().view(-1, merged_feat.shape[1])
+        feat, _ = torch.max(merged_feat, dim=2)
+        # print("feat : " , feat.shape)
 
+        # feat = merged_feat.transpose(1, 2).contiguous().view(-1, merged_feat.shape[1])
         # print("feat : " , feat.shape)
         
-        pts0_new = clouds0.transpose(1, 2).contiguous().view(-1, clouds0.shape[1])
+        # pts0_new = clouds0.transpose(1, 2).contiguous().view(-1, clouds0.shape[1])
         # print("pts0_new : " , pts0_new.shape)
 
-        out = torch.cat((pts0_new[:, :self._point_dim], feat), dim=1) #origin out
-        out = out.view(clouds0.shape[0], -1, out.shape[1]).transpose(1, 2).contiguous()
-        
+        # out = torch.cat((pts0_new[:, :self._point_dim], feat), dim=1) #origin out
+        # out = out.view(clouds0.shape[0], -1, out.shape[1]).transpose(1, 2).contiguous()
+
+        # PE
+        _, _, encoded_pts0, encoded_pts1 = self._pe(clouds0, clouds1)
+        pe_merged = torch.cat((encoded_pts0, encoded_pts1), dim=1)
+        # print("pe_merged 1 : ", pe_merged.shape)
+        pe_merged = pe_merged.permute(2, 1, 0)
+        # print("pe_merged 2 : ", pe_merged.shape)
+        pe_merged_feat = self._pe_conv(pe_merged)
+        # print("pe_merged_feat : ", pe_merged_feat.shape)
+        pe_feat = pe_merged_feat.transpose(1, 2).contiguous().view(-1, pe_merged_feat.shape[1])
+        # print("pe_feat : " , pe_feat.shape)
+
         # append features to pts1 pos and separate batches
-        # out = torch.cat((pts0[:, :self._point_dim], feat), dim=1) #origin out
+        out = torch.cat((pts0[:, :self._point_dim], feat, pe_feat), dim=1) #origin out
         # print("out : " , out.shape)
         # merged :  torch.Size([2048, 10, 131])
         # merged 2:  torch.Size([2048, 131, 10])
@@ -403,7 +445,7 @@ class MotionEmbeddingBase(nn.Module):
         #     print("new_pos_diff : ", new_pos_diff.shape)
         #     out = torch.cat((new_pos_diff, feat), dim=1) #test with diff
 
-        # out = out.view(clouds0.shape[0], -1, out.shape[1]).transpose(1, 2).contiguous()
+        out = out.view(clouds0.shape[0], -1, out.shape[1]).transpose(1, 2).contiguous()
         # print("(self._input_dim - self._point_dim) : ", (self._input_dim - self._point_dim))
         # print("self._conv.output_dim()", self._conv.output_dim())
         # print("out2 : " , out.shape)
