@@ -16,6 +16,7 @@ def prepare_batch(batch: BatchDataTorch, device: Optional[Union[str, torch.devic
     batch['x'] = prepare_tensor(batch['x'], device=device, non_blocking=non_blocking)
     batch['y'] = prepare_tensor(batch['y'], device=device, non_blocking=non_blocking)
     batch['m'] = prepare_tensor(batch['m'], device=device, non_blocking=non_blocking)
+    batch['pose'] = prepare_tensor(batch['pose'], device=device, non_blocking=non_blocking)
     return batch
 
 
@@ -76,7 +77,7 @@ def create_trainer(model: BaseModel, optimizer: torch.optim.Optimizer,
             y_pred, loss, _ = model(batch['x'], m=batch['m'], y=batch['y'])
         else:
             y_pred, _, _ = model(batch['x'], m=batch['m'])
-            loss = loss_fn(y_pred, batch['y'])
+            loss = loss_fn(y_pred, batch['y']) #change batch['y'] to dict if you want to batch_dict 
 
         # print("y_pred : ", y_pred)
         # print("loss : ", loss)

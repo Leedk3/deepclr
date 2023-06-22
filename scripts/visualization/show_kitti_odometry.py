@@ -36,6 +36,7 @@ def main():
         if i % 100 == 0:
             print("Iteration {}/{}".format(i + 1, len(df)))
             print(len(cloud[:, :3]))
+            print(pose)
             # visualizer.update_point_cloud('cloud', cloud[:, :3], color=[1, 0, 0], size=2)
             # visualizer.spin_once(1000)
 

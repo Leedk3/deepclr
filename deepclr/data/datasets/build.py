@@ -49,7 +49,8 @@ class MergePairSequence(ProxyDataFlow):
                    'timestamps': [data[0]['timestamp'], data[1]['timestamp']],
                    'clouds': [data[0]['cloud'], data[1]['cloud']],
                    'transform': _get_motion(data[0]['pose'], data[1]['pose']),
-                   'augmentations': [None, None]}
+                   'augmentations': [None, None],
+                   'pose': data[0]['pose']}
 
 
 class DuplicateCloud(ProxyDataFlow):

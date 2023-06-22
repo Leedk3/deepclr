@@ -604,10 +604,15 @@ class ModelTransformer(TransformerModule):
         )
 
         # Semantic class of the box
-        self.pose_head = mlp_func(output_dim=256)
-        self.trans_head = mlp_func(output_dim=3)
-        self.rot_head = mlp_func(output_dim=256)
-
+        pose_head = mlp_func(output_dim=8)
+        trans_head = mlp_func(output_dim=4)
+        rot_head = mlp_func(output_dim=4)
+        mlp_heads = [
+            ("pose_head", pose_head),
+            ("trans_head", trans_head),
+            ("rot_head", rot_head),
+        ]
+        self.mlp_heads = nn.ModuleDict(mlp_heads)
 
     def get_query_embeddings(self, encoder_xyz, point_cloud_dims):
         query_inds = pointnet2_stack_utils.furthest_point_sample(encoder_xyz, self.num_queries)
@@ -652,48 +657,52 @@ class ModelTransformer(TransformerModule):
         )
         return center_normalized, center_unnormalized
 
-    def get_box_predictions(self, query_xyz, point_cloud_dims, box_features):
+    def get_box_predictions(self, query_xyz, point_cloud_dims, pose_features):
         """
         Parameters:
             query_xyz: batch x nqueries x 3 tensor of query XYZ coords
             point_cloud_dims: List of [min, max] dims of point cloud
                               min: batch x 3 tensor of min XYZ coords
                               max: batch x 3 tensor of max XYZ coords
-            box_features: num_layers x num_queries x batch x channel
+            pose_features: num_layers x num_queries x batch x channel
         """
-        # box_features change to (num_layers x batch) x channel x num_queries
-        box_features = box_features.permute(0, 2, 3, 1)
+        # pose_features change to (num_layers x batch) x channel x num_queries
+        pose_features = pose_features.permute(0, 2, 3, 1)
         num_layers, batch, channel, num_queries = (
-            box_features.shape[0],
-            box_features.shape[1],
-            box_features.shape[2],
-            box_features.shape[3],
+            pose_features.shape[0],
+            pose_features.shape[1],
+            pose_features.shape[2],
+            pose_features.shape[3],
         )
-        box_features = box_features.reshape(num_layers * batch, channel, num_queries)
+        pose_features = pose_features.reshape(num_layers * batch, channel, num_queries)
 
 
         # mlp head outputs are (num_layers x batch) x noutput x nqueries, so transpose last two dims
-        trans_logits = self.pose_head(box_features).transpose(1, 2)
-        rot_logits = self.rot_head(box_features).transpose(1, 2) 
+        pose_logits = self.mlp_heads["pose_head"](pose_features).transpose(1, 2)
+        # rot_logits = self.mlp_heads["rot_head"](pose_features).transpose(1, 2)
+        # trans_logits = self.mlp_heads["trans_head"](pose_features).transpose(1, 2)
 
 
         # reshape outputs to num_layers x batch x nqueries x noutput
-        trans_logits = trans_logits.reshape(num_layers, batch, num_queries, -1)
-        rot_logits = rot_logits.reshape(num_layers, batch, num_queries, -1)
+        pose_logits = pose_logits.reshape(num_layers, batch, num_queries, -1)
+        # trans_logits = trans_logits.reshape(num_layers, batch, num_queries, -1)
+        # rot_logits = rot_logits.reshape(num_layers, batch, num_queries, -1)
 
         outputs = []
         for l in range(num_layers):
  
 
             box_prediction = {
-                "trans_logits": trans_logits[l],
-                "rot_logits": rot_logits[l],
+                "pose_logits": pose_logits[l],
+                # "trans_logits": trans_logits[l],
+                # "rot_logits": rot_logits[l],
             }
             outputs.append(box_prediction)
 
         # intermediate decoder layer outputs are only used during training
         aux_outputs = outputs[:-1]
         outputs = outputs[-1]
+        # print(outputs['pose_logits'].shape)
         return outputs
         # return {
         #     "outputs": outputs,  # output from last layer of decoder
@@ -742,7 +751,7 @@ class ModelTransformer(TransformerModule):
 
 
         # query_embed: batch x channel x npoint
-        enc_pos = self.pos_embedding(tgt_xyz, input_range=point_cloud_dims)
+        enc_pos = self.pos_embedding(enc_xyz, input_range=point_cloud_dims)
 
         # decoder expects: npoints x batch x channel
         enc_pos = enc_pos.permute(2, 0, 1)
@@ -755,10 +764,9 @@ class ModelTransformer(TransformerModule):
             tgt, enc_features, query_pos=query_embed, pos=enc_pos
         )[0]
         # print("dec_features : ", dec_features.shape)
-
         # #  dec_features: num_layers x num_queries x batch x channel
 
-        # # box_features change to batch x (num_layers x channel) x num_queries
+        # # pose_features change to batch x (num_layers x channel) x num_queries
         # dec_features = dec_features.permute(2, 0, 3, 1)
         # batch, num_layers, channel, num_queries = (
         #     dec_features.shape[0],
@@ -784,7 +792,7 @@ class TransformerBase(nn.Module):
         self._append_features = append_features
         self._input_dim = input_dim
         self.transformer_params = transformer_dict
-        self._transformer = ModelTransformer(self.transformer_params, encoder_dim=self.transformer_params.enc_dim, decoder_dim=self.transformer_params.dec_dim)
+        self._transformer = ModelTransformer(self.transformer_params, encoder_dim=self.transformer_params.enc_dim, decoder_dim=self.transformer_params.dec_dim, num_queries = 1024)
 
         self._label_type = label_type
         # print("========Output LAYER TEST ==========\n")
@@ -792,7 +800,7 @@ class TransformerBase(nn.Module):
         # layers
 
         # dense head
-        mlp_layers = [256, *mlp]
+        mlp_layers = [1024, *mlp]
         # print("mlp_layers : ", mlp_layers)
         self.pos_conv = Conv1dMultiLayer(mlp_layers, batch_norm=batch_norm)
         # print("output_dim : ", self.conv.output_dim())
@@ -870,29 +878,36 @@ class TransformerBase(nn.Module):
         # trans_out = torch.cat((trans_xyz, dec_feature), dim=1)
         # print("trans_out", trans_out.shape)
         
-        pos_x = self.pos_conv(prediction["trans_logits"])
+        pos_x = self.pos_conv(prediction["pose_logits"])
         pos_x, _ = torch.max(pos_x, dim=2)
-        # output shape
+        # # output shape
         pos_x = self.pos_linear(pos_x)
         pos_x = self.pos_output(pos_x)
         pos_x = self._output_activation(pos_x)
 
-        rot_x = self.rot_conv(prediction["rot_logits"])
-        rot_x, _ = torch.max(rot_x, dim=2)
-        # output shape
-        rot_x = self.rot_linear(rot_x)
-        rot_x = self.rot_output(rot_x)
-        rot_x = self._output_activation(rot_x)
+        # rot_x = self.rot_conv(prediction["rot_logits"])
+        # rot_x, _ = torch.max(rot_x, dim=2)
+        # # output shape
+        # rot_x = self.rot_linear(rot_x)
+        # rot_x = self.rot_output(rot_x)
+        # rot_x = self._output_activation(rot_x)
 
-        # print("pos_x : ", pos_x)
-        # print("rot_x : ", rot_x)
+        # # print("pos_x : ", pos_x)
+        # # print("rot_x : ", rot_x)
 
-        # x = torch.cat(rot_x, pos_x, dim=2)
-        output_dict = {
-            "trans": pos_x,
-            "rot": rot_x,
-        }
-        return output_dict
+        # # x = torch.cat(rot_x, pos_x, dim=2)
+        # output_dict = {
+        #     "trans": pos_x,
+        #     "rot": rot_x,
+        # }
+        clouds_dict_buf['trans'] = pos_x
+        clouds_dict_buf['rot'] = pos_x
+        # clouds_dict_buf['trans'] = pos_x
+        # clouds_dict_buf['trans'] = prediction["trans_logits"]
+        # clouds_dict_buf['trans'] = prediction["trans_logits"]
+
+
+        return clouds_dict_buf
         # return torch.cat((prediction["trans_logits"], prediction["trans_normalized"], prediction["rot_logits"]), dim=2)
 
 

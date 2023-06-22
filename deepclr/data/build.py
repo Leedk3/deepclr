@@ -19,6 +19,7 @@ class BatchDataNumpy(TypedDict):
     m: np.ndarray
     d: np.ndarray
     t: np.ndarray
+    pose: np.ndarray
 
 
 class BatchDataTorch(TypedDict):
@@ -27,7 +28,7 @@ class BatchDataTorch(TypedDict):
     m: torch.Tensor
     d: torch.Tensor
     t: torch.Tensor
-
+    pose: torch.Tensor
 
 class BatchRegistrationData(ProxyDataFlow):
     """Create batch from registration dataflow."""
@@ -60,7 +61,7 @@ class BatchRegistrationData(ProxyDataFlow):
 
     def aggregate_batch(self, data_holder: List[Dict]) -> BatchDataNumpy:
         first_dp = data_holder[0]
-
+        # print(first_dp)
         batch_dim = len(data_holder)
         cloud_count = len(first_dp['clouds'])
         cloud_shape0 = min([min([cloud.shape[0] for cloud in sample['clouds']]) for sample in data_holder])
@@ -68,6 +69,7 @@ class BatchRegistrationData(ProxyDataFlow):
 
         clouds_batch = np.empty((batch_dim * cloud_count, cloud_shape0, cloud_shape1), dtype=np.float32)
         labels_batch = np.empty((batch_dim, self.label_type.dim), dtype=np.float32)
+        poses_batch = np.empty((batch_dim, self.label_type.dim), dtype=np.float32)
         augmentations_batch = np.empty((batch_dim * cloud_count, 4, 4), dtype=np.float32)
         datasets_batch_list = [np.empty(0)] * batch_dim
         timestamps_batch = np.empty((batch_dim, 2), dtype=np.int64)
@@ -91,11 +93,12 @@ class BatchRegistrationData(ProxyDataFlow):
             labels_batch[batch_idx] = self.label_type.from_matrix(sample['transform'])
             datasets_batch_list[batch_idx] = sample['dataset']
             timestamps_batch[batch_idx] = sample['timestamps']
+            poses_batch[batch_idx] = self.label_type.from_matrix(sample['pose'])
 
         datasets_batch = np.array(datasets_batch_list)
 
         output: BatchDataNumpy = {'x': clouds_batch, 'y': labels_batch, 'm': augmentations_batch,
-                                  'd': datasets_batch, 't': timestamps_batch}
+                                  'd': datasets_batch, 't': timestamps_batch, 'pose': poses_batch}
         return output
 
 
