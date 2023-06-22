@@ -8,13 +8,7 @@ from torch_cluster import knn
 import torchgeometry as tgm
 from pointnet2 import PointnetSAModuleMSG
 from functools import partial
-from pcdet.ops.pointnet2.pointnet2_stack import pointnet2_modules as pointnet2_stack_modules
 from pcdet.ops.pointnet2.pointnet2_stack import pointnet2_utils as pointnet2_stack_utils
-from pcdet.models.backbones_3d.pfe.voxel_set_abstraction import bilinear_interpolate_torch, sample_points_with_roi
-from pcdet.utils import common_utils
-from pcdet.utils.spconv_utils import replace_feature, spconv
-from pcdet.models.backbones_3d.spconv_backbone import post_act_block 
-from spconv.pytorch.utils import PointToVoxel as VoxelGenerator
 from torch.profiler import profile, record_function, ProfilerActivity
 from .transformer import SelfAttention, Transformer3D, Transformer
 
@@ -108,15 +102,37 @@ class SetAbstraction(DEEPCLRTFModule):
 
     def forward(self, clouds: torch.Tensor, *_args: Any) -> torch.Tensor:
         xyz, features = split_features(clouds)
+        # print("xyz : ", xyz.shape)
+        # print("features : ", features.shape)
+
         xyz, features = self._sa0(xyz, features)
+        # print("xyz 2: ", xyz.shape)
+        # print("features 2: ", features.shape)
+        
         if self._sa1 is not None:
             xyz, features = self._sa1(xyz, features)
-        clouds = merge_features(xyz, features)
-        return clouds
+        set_abstract_cloud = merge_features(xyz, features)
+        # print("clouds : ", clouds.shape)
+        
+        batch_dim = int(set_abstract_cloud.shape[0] / 2)
+        output_dict = {
+            "src_cloud": clouds[:batch_dim, ...],
+            "tgt_cloud": clouds[batch_dim:, ...],
+            "set_abstract_cloud": set_abstract_cloud,
+        } 
+        # return clouds
+        return output_dict
 
-    #         # xyz :  torch.Size([10, 1024, 3])
-    #         # features :  torch.Size([10, 64, 1024])
-    #         # clouds :  torch.Size([10, 67, 1024])
+
+            # xyz :  torch.Size([10, 1024, 3])
+            # features :  torch.Size([10, 64, 1024])
+            # clouds :  torch.Size([10, 67, 1024])
+
+            # xyz :  torch.Size([10, 44477, 3])
+            # features :  torch.Size([10, 1, 44477])
+            # xyz 2:  torch.Size([10, 1024, 3])
+            # features 2:  torch.Size([10, 64, 1024])
+            # clouds :  torch.Size([10, 67, 1024])
 
 class GroupingModule(abc.ABC, nn.Module):
     """Abstract base class for point cloud grouping."""
@@ -134,14 +150,6 @@ class PositionalEncodingGrouping(GroupingModule):
         super().__init__()
         self._point_dim = point_dim
         self._encoding_dim = encoding_dim
-        # self._positional_encoding = PositionalEncoding(point_dim, encoding_dim)
-
-        # self._positional_encoding = PositionEmbeddingCoordsSine(
-        #     normalize=True, 
-        #     pos_type="fourier", 
-        #     d_pos=encoding_dim, 
-        #     d_in=point_dim
-        # )
 
         self._positional_encoding = PositionEmbeddingCoordsSine(
             d_pos=encoding_dim - point_dim, pos_type="fourier", normalize=True
@@ -313,7 +321,7 @@ class MotionEmbeddingBase(nn.Module):
         self._append_features = append_features
         self._k = k
         self._input_dim = input_dim
-        # self.transformer_dict = transformer
+        # self.transformer_params = transformer
         print("point_dim + 2 * (input_dim - point_dim) : " , point_dim + 2 * (input_dim - point_dim))
         # self._transformer = Transformer(transformer.NUM_KEYPOINTS, point_dim + 2 * (input_dim - point_dim), transformer.NUM_LAYER, transformer.NUM_HEAD)
         # self._transformer = ModelTransformer(transformer, encoder_dim=transformer.enc_dim, decoder_dim=transformer.dec_dim)
@@ -485,10 +493,19 @@ class MotionEmbedding(DEEPCLRTFModule):
     def output_dim(self):
         return self._embedding.output_dim()
 
-    def forward(self, clouds: torch.Tensor) -> torch.Tensor:
-        batch_dim = int(clouds.shape[0] / 2)
-        return self._embedding(clouds[:batch_dim, ...],
-                               clouds[batch_dim:, ...])
+    # def forward(self, clouds: torch.Tensor) -> torch.Tensor:
+    def forward(self, clouds_dict: Dict) -> torch.Tensor:
+        clouds_dict_buf = clouds_dict
+        merged_clouds = clouds_dict['set_abstract_cloud']
+        batch_dim = int(merged_clouds.shape[0] / 2)
+
+        motion_embed_clouds = self._embedding(merged_clouds[:batch_dim, ...],
+                               merged_clouds[batch_dim:, ...])
+        clouds_dict_buf['motion_embed_clouds'] = motion_embed_clouds
+        return clouds_dict_buf
+
+        # self._embedding(merged_clouds[:batch_dim, ...],
+        #                        merged_clouds[batch_dim:, ...])
 
 
 class TransformerModule(abc.ABC, nn.Module):
@@ -516,7 +533,7 @@ class ModelTransformer(TransformerModule):
 
     def __init__(
         self,
-        transformer_dict,
+        transformer_params,
         encoder_dim=256,
         decoder_dim=256,
         position_embedding="fourier",
@@ -525,26 +542,25 @@ class ModelTransformer(TransformerModule):
         super().__init__()
 
         encoder_layer = TransformerEncoderLayer(
-            d_model=transformer_dict.enc_dim,
-            nhead=transformer_dict.enc_nhead,
-            dim_feedforward=transformer_dict.enc_ffn_dim,
-            dropout=transformer_dict.enc_dropout,
-            activation=transformer_dict.enc_activation,
+            d_model=transformer_params.enc_dim,
+            nhead=transformer_params.enc_nhead,
+            dim_feedforward=transformer_params.enc_ffn_dim,
+            dropout=transformer_params.enc_dropout,
+            activation=transformer_params.enc_activation,
         )
         encoder = TransformerEncoder(
-            encoder_layer=encoder_layer, num_layers=transformer_dict.enc_nlayers
+            encoder_layer=encoder_layer, num_layers=transformer_params.enc_nlayers
         )
         self.encoder = encoder
 
-
         decoder_layer = TransformerDecoderLayer(
-            d_model=transformer_dict.dec_dim,
-            nhead=transformer_dict.dec_nhead,
-            dim_feedforward=transformer_dict.dec_ffn_dim,
-            dropout=transformer_dict.dec_dropout,
+            d_model=transformer_params.dec_dim,
+            nhead=transformer_params.dec_nhead,
+            dim_feedforward=transformer_params.dec_ffn_dim,
+            dropout=transformer_params.dec_dropout,
         )
         decoder = TransformerDecoder(
-            decoder_layer, num_layers=transformer_dict.dec_nlayers, return_intermediate=True
+            decoder_layer, num_layers=transformer_params.dec_nlayers, return_intermediate=True
         )
 
         if hasattr(self.encoder, "masking_radius"):
@@ -575,7 +591,7 @@ class ModelTransformer(TransformerModule):
         )
         self.decoder = decoder
         self.num_queries = num_queries
-        self.transformer_dict = transformer_dict
+        self.transformer_params = transformer_params
 
         mlp_func = partial(
             GenericMLP,
@@ -583,7 +599,7 @@ class ModelTransformer(TransformerModule):
             activation="relu",
             use_conv=True,
             hidden_dims=[decoder_dim, decoder_dim],
-            dropout=transformer_dict.mlp_dropout,
+            dropout=transformer_params.mlp_dropout,
             input_dim=decoder_dim,
         )
 
@@ -657,12 +673,12 @@ class ModelTransformer(TransformerModule):
 
 
         # mlp head outputs are (num_layers x batch) x noutput x nqueries, so transpose last two dims
-        pose_logits = self.pose_head(box_features).transpose(1, 2)
+        trans_logits = self.pose_head(box_features).transpose(1, 2)
         rot_logits = self.rot_head(box_features).transpose(1, 2) 
 
 
         # reshape outputs to num_layers x batch x nqueries x noutput
-        pose_logits = pose_logits.reshape(num_layers, batch, num_queries, -1)
+        trans_logits = trans_logits.reshape(num_layers, batch, num_queries, -1)
         rot_logits = rot_logits.reshape(num_layers, batch, num_queries, -1)
 
         outputs = []
@@ -670,7 +686,7 @@ class ModelTransformer(TransformerModule):
  
 
             box_prediction = {
-                "pose_logits": pose_logits[l],
+                "trans_logits": trans_logits[l],
                 "rot_logits": rot_logits[l],
             }
             outputs.append(box_prediction)
@@ -684,16 +700,21 @@ class ModelTransformer(TransformerModule):
         #     "aux_outputs": aux_outputs,  # output from intermediate layers of decoder
         # }
 
-    def forward(self, pre_enc_xyz, pre_enc_features):
-        # xyz: batch x npoints x 3
-        # features: batch x channel x npoints
-        # inds: batch x npoints
-
-        enc_xyz, enc_features= self.run_encoder(pre_enc_xyz, pre_enc_features)
-        # print("pre_enc_xyz : ",pre_enc_xyz.shape)
+    def forward(self, pre_enc_xyz, pre_enc_features, tgt_xyz):
+        # pre_enc_xyz: B x sampled x 3
+        # features: B x feat x sampled
+        # print("pre_enc_xyz : ",pre_enc_xyz.shape) 
         # print("pre_enc_features : ",pre_enc_features.shape) 
+        # print("tgt_xyz : ",tgt_xyz.shape) 
+
+        # nn.MultiHeadAttention in encoder expects npoints x batch x channel features
+        
+        enc_xyz, enc_features= self.run_encoder(pre_enc_xyz, pre_enc_features)
+        # encoder features: npoints x batch x channel
+        # encoder xyz: npoints x batch x 3
+
         # print("enc_xyz : ",enc_xyz.shape)
-        # print("enc_features : ", enc_features, enc_features.shape) 
+        # print("enc_features : ", enc_features.shape) 
 
         # test here. we dont need encoder to decoder projection. length is same.
         enc_features = self.encoder_to_decoder_projection(
@@ -702,7 +723,7 @@ class ModelTransformer(TransformerModule):
         
         # encoder features: npoints x batch x channel
         # encoder xyz: npoints x batch x 3
-        # print("enc_features 2 : ", enc_features, enc_features.shape) 
+        # print("enc_features 2 : ", enc_features.shape) 
 
         # min_max_xyz = pre_enc_xyz.reshape(-1, pre_enc_xyz.shape[2]).contiguous()
         # print(pre_enc_xyz.shape)
@@ -717,10 +738,11 @@ class ModelTransformer(TransformerModule):
             max_xyz,
         ]
 
-        query_xyz, query_embed = self.get_query_embeddings(enc_xyz, point_cloud_dims)
+        query_xyz, query_embed = self.get_query_embeddings(tgt_xyz, point_cloud_dims)  
+
 
         # query_embed: batch x channel x npoint
-        enc_pos = self.pos_embedding(enc_xyz, input_range=point_cloud_dims)
+        enc_pos = self.pos_embedding(tgt_xyz, input_range=point_cloud_dims)
 
         # decoder expects: npoints x batch x channel
         enc_pos = enc_pos.permute(2, 0, 1)
@@ -761,8 +783,8 @@ class TransformerBase(nn.Module):
         self._point_dim = point_dim
         self._append_features = append_features
         self._input_dim = input_dim
-        self.transformer_dict = transformer_dict
-        self._transformer = ModelTransformer(transformer_dict, encoder_dim=transformer_dict.enc_dim, decoder_dim=transformer_dict.dec_dim)
+        self.transformer_params = transformer_dict
+        self._transformer = ModelTransformer(self.transformer_params, encoder_dim=self.transformer_params.enc_dim, decoder_dim=self.transformer_params.dec_dim)
 
         self._label_type = label_type
         # print("========Output LAYER TEST ==========\n")
@@ -770,7 +792,7 @@ class TransformerBase(nn.Module):
         # layers
 
         # dense head
-        mlp_layers = [self._input_dim - self._point_dim, *mlp]
+        mlp_layers = [256, *mlp]
         # print("mlp_layers : ", mlp_layers)
         self.pos_conv = Conv1dMultiLayer(mlp_layers, batch_norm=batch_norm)
         # print("output_dim : ", self.conv.output_dim())
@@ -809,25 +831,34 @@ class TransformerBase(nn.Module):
         # return self._input_dim - self._point_dim
         return self._label_type.dim
 
-    def forward(self, embedded_flow: torch.Tensor) -> torch.Tensor:
-        # # TODO : self-attention layer here
-        trans_xyz = embedded_flow[:, :self._point_dim,:].transpose(1,2).contiguous()
-        trans_feature = embedded_flow[:, self._point_dim:,:].contiguous()
+    def forward(self, clouds_dict: Dict) -> torch.Tensor:
+        clouds_dict_buf = clouds_dict
+        sa_cloud = clouds_dict['set_abstract_cloud'] # 2*B x (3 + feature) x sampled
+        batch_dim = int(sa_cloud.shape[0] / 2)
+        src_sa_cloud = sa_cloud[:batch_dim, ...] #B x (3+feat) x sampled
+        tgt_sa_cloud = sa_cloud[batch_dim:, ...] #B x (3+feat) x sampled
 
-        # print("trans_xyz : ", trans_xyz)
+        # print("src_sa_cloud : ", src_sa_cloud.shape)
+        # print("tgt_sa_cloud : ", tgt_sa_cloud.shape)
+
+        trans_src_xyz = src_sa_cloud[:, :self._point_dim,:].transpose(1,2).contiguous() # B x sampled x (3)
+        trans_feature = src_sa_cloud[:, self._point_dim:,:].contiguous() # B x feat x sampled
+        trans_tgt_xyz = tgt_sa_cloud[:, :self._point_dim,:].transpose(1,2).contiguous() # B x sampled x (3)
+
+        # print("trans_src_xyz : ", trans_src_xyz)
         # print("trans_feature : ", trans_feature)
         # print("target_xyz : ", target_xyz)
 
-        # print("xyz", trans_xyz.shape)
-        # print("feature", trans_feature.shape)
+        # print("trans_src_xyz : ", trans_src_xyz.shape)
+        # print("trans_feature : ", trans_feature.shape)
         # xyz torch.Size([2, 4096, 3])
         # feature torch.Size([2, 256, 4096])
 
         # # xyz: batch x npoints x 3
         # # features: batch x channel x npoints
-        # # print(trans_xyz)
-        prediction = self._transformer(trans_xyz, trans_feature)
-        # print("pose_logits : ", prediction["pose_logits"].shape)
+        # # print(trans_src_xyz)
+        prediction = self._transformer(trans_src_xyz, trans_feature, trans_tgt_xyz)
+        # print("trans_logits : ", prediction["trans_logits"].shape)
         # print("trans_normalized : ", prediction["trans_normalized"].shape)
         # print("trans_unnormalized : ", prediction["trans_unnormalized"].shape)
         # print("rot_logits : ", prediction["rot_logits"].shape)
@@ -839,7 +870,7 @@ class TransformerBase(nn.Module):
         # trans_out = torch.cat((trans_xyz, dec_feature), dim=1)
         # print("trans_out", trans_out.shape)
         
-        pos_x = self.pos_conv(prediction["pose_logits"])
+        pos_x = self.pos_conv(prediction["trans_logits"])
         pos_x, _ = torch.max(pos_x, dim=2)
         # output shape
         pos_x = self.pos_linear(pos_x)
@@ -858,11 +889,11 @@ class TransformerBase(nn.Module):
 
         # x = torch.cat(rot_x, pos_x, dim=2)
         output_dict = {
-            "pos": pos_x,
+            "trans": pos_x,
             "rot": rot_x,
         }
         return output_dict
-        # return torch.cat((prediction["pose_logits"], prediction["trans_normalized"], prediction["rot_logits"]), dim=2)
+        # return torch.cat((prediction["trans_logits"], prediction["trans_normalized"], prediction["rot_logits"]), dim=2)
 
 
 
@@ -914,7 +945,10 @@ class OutputSimple(DEEPCLRTFModule):
             x[:, 1:4] = torch.tanh(x[:, 1:4])
         return x
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    # def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, cloud_dict: Dict) -> torch.Tensor:
+        cloud_dict_buf = cloud_dict
+        x = cloud_dict['motion_embed_clouds']
         # apply pointnet to get final feature vector
         x = self.conv(x)
         x, _ = torch.max(x, dim=2)
@@ -924,12 +958,19 @@ class OutputSimple(DEEPCLRTFModule):
         x = self.output(x)
         x = self._output_activation(x)
 
+        
         # x = torch.cat(rot_x, pos_x, dim=2)
-        output_dict = {
-            "pos": x,
-            "rot": x,
-        }
-        return output_dict
+        cloud_dict_buf['trans'] = x
+        cloud_dict_buf['rot'] = x
+        
+        # print("src_cloud :", cloud_dict_buf['src_cloud'].shape)
+        # print("tgt_cloud :", cloud_dict_buf['tgt_cloud'].shape)
+        # print("set_abstract_cloud :", cloud_dict_buf['set_abstract_cloud'].shape)
+        # print("motion_embed_clouds :", cloud_dict_buf['motion_embed_clouds'].shape)
+        # print("trans :", cloud_dict_buf['trans'])
+        # print("rot :", cloud_dict_buf['rot'])
+
+        return cloud_dict_buf
 
         # return x
 
@@ -1079,96 +1120,12 @@ def split_output(output: Any) -> Tuple[Any, Any]:
 
 
 
-class DEEPCLRTF(BaseModel):
-    """Main DeepCLR network."""
-    _loss_layer: Optional[DEEPCLRTFLoss]
-
-    def __init__(self, input_dim: int, label_type: LabelType, cloud_features: Config,
-                 merge: Config, output: Config, transform: Optional[Config] = None,
-                 loss: Optional[Config] = None, **kwargs: Any):
-        super().__init__()
-
-        self._input_dim = input_dim
-
-        transform_layer = init_optional_module(transform, input_dim=input_dim, **kwargs)
-        transform_layer_output_dim = input_dim if transform_layer is None else transform_layer.output_dim()
-
-        cloud_feat_layer = init_module(cloud_features, input_dim=transform_layer_output_dim, **kwargs)
-        merge_layer = init_module(merge, input_dim=cloud_feat_layer.output_dim(), **kwargs)
-        print("merge_layer.output_dim() : ", merge_layer.output_dim())
-        output_layer = init_module(output, input_dim=merge_layer.output_dim(), label_type=label_type, **kwargs)
-
-        if transform_layer is None:
-            self._cloud_layers = nn.Sequential(cloud_feat_layer)
-            self._merge_layers = nn.Sequential(merge_layer, output_layer)
-        else:
-            self._cloud_layers = nn.Sequential(transform_layer, cloud_feat_layer)
-            self._merge_layers = nn.Sequential(merge_layer, output_layer)
-
-        if loss is not None:
-            if isinstance(loss, list):
-                loss_modules = [init_loss_module(loss_cfg, label_type, **kwargs) for loss_cfg in loss]
-                self._loss_layer = AccumulatedLoss(loss_modules)
-            else:
-                self._loss_layer = init_loss_module(loss, label_type, **kwargs)
-        else:
-            self._loss_layer = None
-
-    def get_input_dim(self) -> int:
-        return self._input_dim
-
-    def has_loss(self) -> bool:
-        return self._loss_layer is not None
-
-    def get_loss_weights(self) -> Dict:
-        if self._loss_layer is not None:
-            return self._loss_layer.get_weights()
-        else:
-            return {}
-
-    def forward(self, x: torch.Tensor, is_feat: bool = False, m: Optional[torch.Tensor] = None,
-                y: Optional[torch.Tensor] = None, debug: bool = False)\
-            -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Dict]]:
-        # cloud features
-        if not is_feat:
-            x = self.cloud_features(x, m=m)
-
-        # merge
-        model_output = self._merge_layers(x)
-        y_pred, model_aux = split_output(model_output)
-
-        # loss
-        if self._loss_layer is not None and y is not None:
-            loss_output = self._loss_layer(y_pred, y, **model_aux)
-            loss, loss_aux = split_output(loss_output)
-            debug_output = {**model_aux, **loss_aux, 'x_aug': x} if debug else None
-        else:
-            loss = None
-            debug_output = None
-
-        return y_pred, loss, debug_output
-
-    def cloud_features(self, x: torch.Tensor, m: Optional[torch.Tensor] = None) -> torch.Tensor:
-        # apply transforms
-        if m is not None:
-            dim = m.shape[-1] - 1
-            x[:, :, :dim] = tgm.transform_points(m, x[:, :, :dim])
-
-        # format clouds for pointnet2
-        x = x.transpose(1, 2)
-
-        # forward pass
-        x = self._cloud_layers(x)
-        return x
-
-
-
 # class DEEPCLRTF(BaseModel):
-#     """Main DEEPCLRTF network."""
+#     """Main DeepCLR network."""
 #     _loss_layer: Optional[DEEPCLRTFLoss]
 
 #     def __init__(self, input_dim: int, label_type: LabelType, cloud_features: Config,
-#                  merge: Config, transformer: Config, transform: Optional[Config] = None,
+#                  merge: Config, output: Config, transform: Optional[Config] = None,
 #                  loss: Optional[Config] = None, **kwargs: Any):
 #         super().__init__()
 
@@ -1176,38 +1133,27 @@ class DEEPCLRTF(BaseModel):
 
 #         transform_layer = init_optional_module(transform, input_dim=input_dim, **kwargs)
 #         transform_layer_output_dim = input_dim if transform_layer is None else transform_layer.output_dim()
+
 #         cloud_feat_layer = init_module(cloud_features, input_dim=transform_layer_output_dim, **kwargs)
 #         merge_layer = init_module(merge, input_dim=cloud_feat_layer.output_dim(), **kwargs)
-#         deep_transformer_layer = init_module(transformer, input_dim=merge_layer.output_dim(), label_type=label_type, **kwargs)
-#         # output_layer = init_module(output, input_dim=deep_transformer_layer.output_dim(), label_type=label_type, **kwargs)
-#         # print("transform_layer_output_dim : ", transform_layer_output_dim)
-#         # print("cloud_feat_layer_output_dim : ", cloud_feat_layer.output_dim())
-#         # print("merge_layer_output_dim : ", merge_layer.output_dim())
-#         # print("deep_transformer_layer : ", deep_transformer_layer.output_dim())
-#         # print("output_layer_output_dim : ", output_layer.output_dim())
-#         # transform_layer_output_dim :  4
-#         # cloud_feat_layer_output_dim :  67
-#         # merge_layer_output_dim :  259
-#         # output_layer_output_dim :  8
+#         print("merge_layer.output_dim() : ", merge_layer.output_dim())
+#         output_layer = init_module(output, input_dim=merge_layer.output_dim(), label_type=label_type, **kwargs)
 
 #         if transform_layer is None:
 #             self._cloud_layers = nn.Sequential(cloud_feat_layer)
-#             self._merge_layers = nn.Sequential(merge_layer, deep_transformer_layer)
+#             self._merge_layers = nn.Sequential(merge_layer, output_layer)
 #         else:
 #             self._cloud_layers = nn.Sequential(transform_layer, cloud_feat_layer)
-#             self._merge_layers = nn.Sequential(merge_layer, deep_transformer_layer)
+#             self._merge_layers = nn.Sequential(merge_layer, output_layer)
 
 #         if loss is not None:
 #             if isinstance(loss, list):
 #                 loss_modules = [init_loss_module(loss_cfg, label_type, **kwargs) for loss_cfg in loss]
 #                 self._loss_layer = AccumulatedLoss(loss_modules)
-#                 print("LOSS MODULE : 1")
 #             else:
 #                 self._loss_layer = init_loss_module(loss, label_type, **kwargs)
-#                 print("LOSS MODULE : 2")
 #         else:
 #             self._loss_layer = None
-#             print("LOSS MODULE : 3")
 
 #     def get_input_dim(self) -> int:
 #         return self._input_dim
@@ -1230,27 +1176,18 @@ class DEEPCLRTF(BaseModel):
 
 #         # merge
 #         model_output = self._merge_layers(x)
-#         # print(model_output)       
-#         loss = None
-#         debug_output = None
-#         # y_pred, model_aux = split_output(model_output)
+#         y_pred, model_aux = split_output(model_output)
 
-#         # # loss
-#         # if self._loss_layer is not None and y is not None:
-#         #     loss_output = self._loss_layer(y_pred, y, **model_aux)
-#         #     loss, loss_aux = split_output(loss_output)
-#         #     debug_output = {**model_aux, **loss_aux, 'x_aug': x} if debug else None
-#         # else:
-#         #     loss = None
-#         #     debug_output = None
+#         # loss
+#         if self._loss_layer is not None and y is not None:
+#             loss_output = self._loss_layer(y_pred, y, **model_aux)
+#             loss, loss_aux = split_output(loss_output)
+#             debug_output = {**model_aux, **loss_aux, 'x_aug': x} if debug else None
+#         else:
+#             loss = None
+#             debug_output = None
 
-#         # print("y_pred: ", y_pred) 
-#         # # print("loss: ", loss ) 
-#         # # print("debug_output: ", debug_output ) 
-#         # # loss:  None
-#         # # debug_output:  None
-
-#         return model_output, loss, debug_output
+#         return y_pred, loss, debug_output
 
 #     def cloud_features(self, x: torch.Tensor, m: Optional[torch.Tensor] = None) -> torch.Tensor:
 #         # apply transforms
@@ -1264,3 +1201,107 @@ class DEEPCLRTF(BaseModel):
 #         # forward pass
 #         x = self._cloud_layers(x)
 #         return x
+
+
+
+class DEEPCLRTF(BaseModel):
+    """Main DEEPCLRTF network."""
+    _loss_layer: Optional[DEEPCLRTFLoss]
+
+    def __init__(self, input_dim: int, label_type: LabelType, cloud_features: Config,
+                 transformer: Config, transform: Optional[Config] = None,
+                 loss: Optional[Config] = None, **kwargs: Any):
+        super().__init__()
+
+        self._input_dim = input_dim
+
+        transform_layer = init_optional_module(transform, input_dim=input_dim, **kwargs)
+        transform_layer_output_dim = input_dim if transform_layer is None else transform_layer.output_dim()
+        cloud_feat_layer = init_module(cloud_features, input_dim=transform_layer_output_dim, **kwargs)
+        # merge_layer = init_module(merge, input_dim=cloud_feat_layer.output_dim(), **kwargs)
+        deep_transformer_layer = init_module(transformer, input_dim=cloud_feat_layer.output_dim(), label_type=label_type, **kwargs)
+        # output_layer = init_module(output, input_dim=deep_transformer_layer.output_dim(), label_type=label_type, **kwargs)
+        # print("transform_layer_output_dim : ", transform_layer_output_dim)
+        # print("cloud_feat_layer_output_dim : ", cloud_feat_layer.output_dim())
+        # print("merge_layer_output_dim : ", merge_layer.output_dim())
+        # print("deep_transformer_layer : ", deep_transformer_layer.output_dim())
+        # print("output_layer_output_dim : ", output_layer.output_dim())
+        # transform_layer_output_dim :  4
+        # cloud_feat_layer_output_dim :  67
+        # merge_layer_output_dim :  259
+        # output_layer_output_dim :  8
+
+        if transform_layer is None:
+            self._cloud_layers = nn.Sequential(cloud_feat_layer)
+            self._merge_layers = nn.Sequential(deep_transformer_layer)
+        else:
+            self._cloud_layers = nn.Sequential(transform_layer, cloud_feat_layer)
+            self._merge_layers = nn.Sequential(deep_transformer_layer)
+
+        if loss is not None:
+            if isinstance(loss, list):
+                loss_modules = [init_loss_module(loss_cfg, label_type, **kwargs) for loss_cfg in loss]
+                self._loss_layer = AccumulatedLoss(loss_modules)
+                print("LOSS MODULE : 1")
+            else:
+                self._loss_layer = init_loss_module(loss, label_type, **kwargs)
+                print("LOSS MODULE : 2")
+        else:
+            self._loss_layer = None
+            print("LOSS MODULE : 3")
+
+    def get_input_dim(self) -> int:
+        return self._input_dim
+
+    def has_loss(self) -> bool:
+        return self._loss_layer is not None
+
+    def get_loss_weights(self) -> Dict:
+        if self._loss_layer is not None:
+            return self._loss_layer.get_weights()
+        else:
+            return {}
+
+    def forward(self, x: torch.Tensor, is_feat: bool = False, m: Optional[torch.Tensor] = None,
+                y: Optional[torch.Tensor] = None, debug: bool = False)\
+            -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Dict]]:
+        # cloud features
+        if not is_feat:
+            x = self.cloud_features(x, m=m)
+
+        # merge
+        model_output = self._merge_layers(x)
+        # print(model_output)       
+        loss = None
+        debug_output = None
+        # y_pred, model_aux = split_output(model_output)
+
+        # # loss
+        # if self._loss_layer is not None and y is not None:
+        #     loss_output = self._loss_layer(y_pred, y, **model_aux)
+        #     loss, loss_aux = split_output(loss_output)
+        #     debug_output = {**model_aux, **loss_aux, 'x_aug': x} if debug else None
+        # else:
+        #     loss = None
+        #     debug_output = None
+
+        # print("y_pred: ", y_pred) 
+        # # print("loss: ", loss ) 
+        # # print("debug_output: ", debug_output ) 
+        # # loss:  None
+        # # debug_output:  None
+
+        return model_output, loss, debug_output
+
+    def cloud_features(self, x: torch.Tensor, m: Optional[torch.Tensor] = None) -> torch.Tensor:
+        # apply transforms
+        if m is not None:
+            dim = m.shape[-1] - 1
+            x[:, :, :dim] = tgm.transform_points(m, x[:, :, :dim])
+
+        # format clouds for pointnet2
+        x = x.transpose(1, 2)
+
+        # forward pass
+        x = self._cloud_layers(x)
+        return x

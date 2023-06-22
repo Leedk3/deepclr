@@ -264,7 +264,6 @@ class TransformerEncoderLayer(nn.Module):
                     src_key_padding_mask: Optional[Tensor] = None,
                     pos: Optional[Tensor] = None,
                     return_attn_weights: Optional [Tensor] = False):
-
         src2 = self.norm1(src)
         value = src2
         q = k = self.with_pos_embed(src2, pos)

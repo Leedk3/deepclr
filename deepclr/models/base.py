@@ -122,7 +122,7 @@ class ModelInferenceHelper:
                     x = self.stack(self._state, source)
                     y, loss, debug_output = self._model.forward(x, is_feat=True)
                     self._state = source
-                    return y['pos'][0, :]
+                    return y['trans'][0, :]
 
             else:
                 if template is None:
@@ -130,7 +130,7 @@ class ModelInferenceHelper:
 
                 x = self.stack(template, source)
                 y, _, _ = self._model.forward(x, is_feat=False)
-                return y['pos'][0, :]
+                return y['trans'][0, :]
 
     def partial_predict(self, source: torch.Tensor, template: Optional[torch.Tensor] = None) -> Optional[torch.Tensor]:
         """

@@ -55,7 +55,7 @@ def _normalize(x: torch.Tensor, label_type: LabelType, eps: float = 1e-8) -> tor
 
 def trans_loss(source_dict: Dict, target: torch.Tensor, label_type: LabelType, p: int = 2,
                reduction: Optional[str] = 'mean', eps: float = 1e-8) -> torch.Tensor:
-    source = source_dict['pos']
+    source = source_dict['trans']
     """Translation (translation directly from label or dual quaternion vector) loss."""
     if label_type == LabelType.POSE3D_EULER or label_type == LabelType.POSE3D_QUAT:
         source_trans = source[:, :3]
@@ -76,7 +76,7 @@ def trans_loss(source_dict: Dict, target: torch.Tensor, label_type: LabelType, p
 
 def trans_3d_loss(source_dict: Dict, target: torch.Tensor, label_type: LabelType, p: int = 2,
                   reduction: Optional[str] = 'mean', eps: float = 1e-8) -> torch.Tensor:
-    source = source_dict['pos']
+    source = source_dict['trans']
 
     """Translation in 3D coordinates [x, y, z] loss."""
     if label_type == LabelType.POSE3D_EULER or label_type == LabelType.POSE3D_QUAT:
@@ -103,7 +103,7 @@ def trans_3d_loss(source_dict: Dict, target: torch.Tensor, label_type: LabelType
 
 def dual_loss(source_dict: Dict, target: torch.Tensor, label_type: LabelType, p: int = 2,
               reduction: Optional[str] = 'mean', eps: float = 1e-8) -> torch.Tensor:
-    source = source_dict['pos']
+    source = source_dict['trans']
 
     """Dual quaternion vector loss."""
     if label_type == LabelType.POSE3D_QUAT:
@@ -132,7 +132,7 @@ def dual_loss(source_dict: Dict, target: torch.Tensor, label_type: LabelType, p:
 
 def rot_loss(source_dict: Dict, target: torch.Tensor, label_type: LabelType, p: int = 2,
              reduction: Optional[str] = 'mean', eps: float = 1e-8) -> torch.Tensor:
-    source = source_dict['pos']
+    source = source_dict['trans']
 
     """Rotation vector (either euler angles or quaternion vector) loss."""
     if label_type == LabelType.POSE3D_EULER:
@@ -159,7 +159,7 @@ def rot_loss(source_dict: Dict, target: torch.Tensor, label_type: LabelType, p: 
 
 def residual_rot_loss(source_dict: Dict, target: torch.Tensor, label_type: LabelType, p: int = 2,
              reduction: Optional[str] = 'mean', eps: float = 1e-8) -> torch.Tensor:
-    source = source_dict['pos']
+    source = source_dict['trans']
     residual = source_dict['rot']
 
     """Rotation vector (either euler angles or quaternion vector) loss."""
@@ -234,7 +234,7 @@ def residual_rot_loss(source_dict: Dict, target: torch.Tensor, label_type: Label
 
 def quat_norm_loss(source_dict: Dict, target: torch.Tensor, label_type: LabelType,
                    reduction: Optional[str] = 'mean') -> torch.Tensor:
-    source = source_dict['pos']
+    source = source_dict['trans']
 
     """Quaternion norm loss."""
     if label_type != LabelType.POSE3D_QUAT and label_type != LabelType.POSE3D_DUAL_QUAT:
@@ -248,7 +248,7 @@ def quat_norm_loss(source_dict: Dict, target: torch.Tensor, label_type: LabelTyp
 
 def dual_constraint_loss(source_dict: Dict, _target: torch.Tensor, label_type: LabelType,
                          reduction: Optional[str] = 'mean', eps: float = 1e-8) -> torch.Tensor:
-    source = source_dict['pos']
+    source = source_dict['trans']
 
     """Dual quaternion constraint loss."""
     if label_type != LabelType.POSE3D_DUAL_QUAT:

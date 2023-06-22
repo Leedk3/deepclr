@@ -269,11 +269,11 @@ def run_trainer(
                 timestamp = aux['t'][i][-1].item()
 
                 transform_gt = label_type.to_matrix(y_gt[i].cpu().numpy())
-                merged_pred = y_pred['pos'][i] # rot + trans 
+                merged_pred = y_pred['trans'][i] # rot + trans 
 
                 if cfg.metrics.use_residual:
                     # residual_rot + pos
-                    quat_pos = y_pred['pos'][i][:4].cpu().numpy()
+                    quat_pos = y_pred['trans'][i][:4].cpu().numpy()
                     quat_rot = y_pred['rot'][i][:4].cpu().numpy()
 
                     quat_pos = Rotation.from_quat(np.array([*quat_pos]))
