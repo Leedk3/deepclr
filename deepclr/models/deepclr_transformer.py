@@ -134,379 +134,6 @@ class SetAbstraction(DEEPCLRTFModule):
             # features 2:  torch.Size([10, 64, 1024])
             # clouds :  torch.Size([10, 67, 1024])
 
-class GroupingModule(abc.ABC, nn.Module):
-    """Abstract base class for point cloud grouping."""
-    def __init__(self):
-        super().__init__()
-
-    @abc.abstractmethod
-    def forward(self, cloud0: torch.Tensor, cloud1: torch.Tensor)\
-            -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        raise NotImplementedError
-
-class PositionalEncodingGrouping(GroupingModule):
-    """Group points with positional encoding."""
-    def __init__(self, point_dim: int, encoding_dim: int):
-        super().__init__()
-        self._point_dim = point_dim
-        self._encoding_dim = encoding_dim
-
-        self._positional_encoding = PositionEmbeddingCoordsSine(
-            d_pos=encoding_dim - point_dim, pos_type="fourier", normalize=True
-        )
-        # coords = torch.rand((32, 1024, 3))  # Example coordinates
-        # encoded_coords = self._positional_encoding(coords, num_channels=256)
-
-    def _prepare_batch(self, clouds: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        # print("clouds : ",clouds.shape) #b x D x n
-        pts = clouds.permute(0, 2, 1)
-        # print("pts : ", pts.shape) #b 
-        # pts = clouds.transpose(1, 2).contiguous().view(-1, clouds.shape[1])
-        # batch = pts.new_empty(clouds.shape[0], dtype=torch.long)
-        # torch.arange(clouds.shape[0], out=batch)
-        # batch = batch.view(-1, 1).repeat(1, clouds.shape[2]).view(-1)
-
-        return pts
-
-    def forward(self, cloud0: torch.Tensor, cloud1: torch.Tensor)\
-            -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        # prepare data
-        # print(cloud0.size())
-        pts0 = self._prepare_batch(cloud0)
-        pts1 = self._prepare_batch(cloud1)
-
-        # pts0 :  torch.Size([2048, 67])
-        # pts1 :  torch.Size([2048, 67])
-        # batch0 :  torch.Size([2048])
-        # batch1 :  torch.Size([2048])
-        # return batch x d_pos x npoints embedding
-
-        # print(cloud0[:, :self._point_dim, :].shape)
-        # print(cloud1[:, :self._point_dim, :].shape)
-
-        # Find the minimum and maximum value at each position in the tensor
-        min_xyz = (cloud0[:, :self._point_dim, :]).min(dim=2)[0]
-        max_xyz = (cloud1[:, :self._point_dim, :]).max(dim=2)[0]
-
-        # print(min_xyz)
-        # print(max_xyz)
-
-        point_cloud_dims = [
-            min_xyz,
-            max_xyz,
-        ]
-        
-        # apply positional encoding
-        encoded_pts0 = self._positional_encoding(pts0[:, :, :self._point_dim].contiguous(), num_channels=64, input_range=point_cloud_dims)
-        encoded_pts1 = self._positional_encoding(pts1[:, :, :self._point_dim].contiguous(), num_channels=64, input_range=point_cloud_dims)
-
-        # encoded_pts0.permute(2, 0, 1)
-        # encoded_pts1.permute(2, 0, 1)
-        # print("encoded_pts0 : ",encoded_pts0.shape)
-        # print("encoded_pts1 : ",encoded_pts1.shape)
-
-        return pts0, pts1, encoded_pts0, encoded_pts1
-
-class GlobalGrouping(GroupingModule):
-    """Group points over the whole point cloud."""
-    def __init__(self):
-        super().__init__()
-
-    @staticmethod
-    def _prepare_batch(cloud: torch.Tensor) -> torch.Tensor:
-        pts = cloud.transpose(1, 2).contiguous().view(-1, cloud.shape[1])
-        return pts
-
-    def forward(self, cloud0: torch.Tensor, cloud1: torch.Tensor) \
-            -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        # prepare data
-        pts0 = self._prepare_batch(cloud0)
-        pts1 = self._prepare_batch(cloud1)
-
-        # select all points from pts2 for each point of pts1
-        idx0 = pts0.new_empty((pts0.shape[0], 1), dtype=torch.long)
-        torch.arange(pts0.shape[0], out=idx0)
-        idx0 = idx0.repeat(1, cloud1.shape[2])
-
-        idx1 = pts1.new_empty((1, pts1.shape[0]), dtype=torch.long)
-        torch.arange(pts1.shape[0], out=idx1)
-        idx1 = idx1.view(cloud1.shape[0], -1).repeat(1, cloud0.shape[2]).view(idx0.shape)
-
-        group_index = torch.stack((idx0, idx1))
-
-        # get group data [group, point_dim, group points] and subtract sample (center) pos
-        group_pts0 = pts0[group_index[0, ...]]
-        group_pts1 = pts1[group_index[1, ...]]
-
-        return pts0, pts1, group_pts0, group_pts1
-
-
-class KnnGrouping(GroupingModule):
-    """Group points with k nearest neighbor."""
-    def __init__(self, point_dim: int, k: int):
-        super().__init__()
-        self._point_dim = point_dim
-        self._k = k
-
-    @staticmethod
-    def _prepare_batch(clouds: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-
-        # print("========Glocal grouping LAYER TEST ==========\n")
-        # print("clouds : ", clouds.shape)
-        pts = clouds.transpose(1, 2).contiguous().view(-1, clouds.shape[1])
-        # print("pts : ", pts.shape)
-        batch = pts.new_empty(clouds.shape[0], dtype=torch.long)
-        # print("batch : ", batch.shape)
-        torch.arange(clouds.shape[0], out=batch)
-        batch = batch.view(-1, 1).repeat(1, clouds.shape[2]).view(-1)
-        # print("batch 2: ", batch.shape)
-
-        # print("========Glocal grouping LAYER TEST ==========\n")
-
-        # clouds :  torch.Size([5, 67, 512])
-        # pts :  torch.Size([2560, 67])
-        # batch :  torch.Size([5])
-        # batch 2:  torch.Size([2560]) --> final batch
-
-        return pts, batch
-
-    def forward(self, cloud0: torch.Tensor, cloud1: torch.Tensor)\
-            -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        # prepare data
-        pts0, batch0 = self._prepare_batch(cloud0)
-        pts1, batch1 = self._prepare_batch(cloud1)
-
-        # print("pts0 : ", pts0.size())
-        # print("pts1 : ", pts1.size())
-        # print("batch0 : ", batch0.size())
-        # print("batch1 : ", batch1.size())
-        # pts0 :  torch.Size([2048, 67])
-        # pts1 :  torch.Size([2048, 67])
-        # batch0 :  torch.Size([2048])
-        # batch1 :  torch.Size([2048])
-
-        # select k nearest points from pts1 for each point of pts0
-        group_index = knn(pts1[:, :self._point_dim].contiguous().detach(), #xyz from pts1
-                          pts0[:, :self._point_dim].contiguous().detach(), #xyz from pts0
-                          k=self._k, batch_x=batch1, batch_y=batch0)
-        # print("group_index : ", group_index.shape)
-        group_index = group_index.view(2, pts0.shape[0], self._k)
-        # print("group_index2 : ", group_index.shape)
-
-        # get group data [group, point_dim, group points] and subtract sample (center) pos
-        group_pts0 = pts0[group_index[0, ...]]
-        group_pts1 = pts1[group_index[1, ...]]
-        # print("group_pts0 : ", group_pts0.shape)
-
-        # print("========Glocal grouping LAYER TEST ==========\n")
-
-        # group_index :  torch.Size([2, 51200])
-        # group_index2 :  torch.Size([2, 2560, 20])
-        # pts :  torch.Size([2560, 67])
-        # group_pts0 :  torch.Size([2560, 20, 67])
-
-        return pts0, pts1, group_pts0, group_pts1
-
-
-class MotionEmbeddingBase(nn.Module):
-    """Base implementation for motion embedding to merge point clouds."""
-    _grouping: GroupingModule
-
-    def __init__(self, input_dim: int, point_dim: int, k: int, radius: float, mlp: List[int],
-                append_features: bool = True, batch_norm: bool = False, **_kwargs: Any):
-        super().__init__()
-        # print("========Embedding LAYER TEST ==========\n")
-
-        self._point_dim = point_dim
-        self._append_features = append_features
-        self._k = k
-        self._input_dim = input_dim
-        # self.transformer_params = transformer
-        print("point_dim + 2 * (input_dim - point_dim) : " , point_dim + 2 * (input_dim - point_dim))
-        # self._transformer = Transformer(transformer.NUM_KEYPOINTS, point_dim + 2 * (input_dim - point_dim), transformer.NUM_LAYER, transformer.NUM_HEAD)
-        # self._transformer = ModelTransformer(transformer, encoder_dim=transformer.enc_dim, decoder_dim=transformer.dec_dim)
-        self._pe = PositionalEncodingGrouping(point_dim, input_dim)
-
-        if k == 0:
-            self._grouping = GlobalGrouping()
-        else:
-            self._grouping = KnnGrouping(point_dim, k)
-
-        pe_mlp_layers = [2 * (input_dim - point_dim), *mlp]
-
-        if self._append_features:
-            mlp_layers = [point_dim + 2 * (input_dim - point_dim), *mlp]
-        else:
-            mlp_layers = [input_dim, *mlp]
-        # print("mlp_layers : ", mlp_layers) # [3 + 64 x 2, 128, 128, 256]
-        self._conv = Conv1dMultiLayer(mlp_layers, batch_norm=batch_norm)
-        self._pe_conv = Conv1dMultiLayer(pe_mlp_layers, batch_norm=batch_norm)
-
-        pts_diff_mlp_layers = [point_dim , *mlp]
-        self._pts_diff_conv = Conv1dMultiLayer(pts_diff_mlp_layers, batch_norm=batch_norm)
-
-        self._radius = radius
-
-        # print("========Embedding LAYER TEST ==========\n")
-
-    def output_dim(self) -> int:
-        print("self._point_dim + self._conv.output_dim() : " , self._point_dim + self._conv.output_dim())
-        return self._point_dim + self._conv.output_dim() + self._pe_conv.output_dim()
-
-
-    def forward(self, clouds0: torch.Tensor, clouds1: torch.Tensor) -> torch.Tensor:
-        # print("========Embedding LAYER TEST ==========\n")
-        # group
-        pts0, pts1, group_pts0, group_pts1 = self._grouping(clouds0, clouds1)
-        # print("pts0 : " , pts0.shape)
-        # print("pts1 : " , pts1.shape)
-        # print("encoded_pts0 : " , encoded_pts0.shape)
-        # print("encoded_pts1 : " , encoded_pts1.shape)
-        # pts0 :  torch.Size([2, 1024, 67])                                                              
-        # pts1 :  torch.Size([2, 1024, 67])                                                              
-        # encoded_pts0 :  torch.Size([2, 64, 1024])                                                        
-        # encoded_pts1 :  torch.Size([2, 64, 1024]) 
-
-        # print(group_pts0)
-        # merge
-        pos_diff = group_pts1[:, :, :self._point_dim] - group_pts0[:, :, :self._point_dim]
-        # print("pts0 : " , pts0)
-        # print("pts1 : " , pts1)
-        # print("pos_diff : " , pos_diff.shape)
-        # print("group_pts0[:, :, self._point_dim:] : " , group_pts0[:, :, self._point_dim:].shape)
-        # print("group_pts1[:, :, self._point_dim:] : " , group_pts1[:, :, self._point_dim:].shape)
-        # print("group_pts0 : " , group_pts0.shape)
-        # print("group_pts1 : " , group_pts1.shape)
-        # pos_diff :  torch.Size([2048, 10, 3])
-        # group_pts0[:, :, self._point_dim:] :  torch.Size([2048, 10, 64])
-        # group_pts1[:, :, self._point_dim:] :  torch.Size([2048, 10, 64])
-        # group_pts0 :  torch.Size([2048, 10, 67])
-        # group_pts1 :  torch.Size([2048, 10, 67])
-        # out :  torch.Size([2048, 259])
-
-        if self._append_features:
-            merged = torch.cat((pos_diff, group_pts0[:, :, self._point_dim:], group_pts1[:, :, self._point_dim:]),
-                               dim=2)
-        else:
-            merged = torch.cat((pos_diff, group_pts1[:, :, self._point_dim:] - group_pts0[:, :, self._point_dim:]),
-                               dim=2)
-
-        # merged = torch.cat((group_pts1, group_pts0), dim=1)
-        # print("merged 1 : ", merged.shape)
-        # merged = merged.permute(2, 1, 0)
-        # print("merged 2 : ", merged.shape)
-
-        # run pointnet
-        # print("merged : " , merged.shape)
-        merged = merged.transpose(1, 2)
-        # print("merged 2: " , merged.shape)
-        merged_feat = self._conv(merged)
-        # print("merged_feat : " , merged_feat.shape)
-
-        # radius
-        if self._radius > 0.0:
-            pos_diff_norm = torch.norm(pos_diff, dim=2)
-            mask = pos_diff_norm >= self._radius
-            merged_feat.masked_scatter_(mask.unsqueeze(1), merged_feat.new_zeros(merged_feat.shape))
-
-        # print("merged_feat 2: " , merged_feat.shape)
-        feat, _ = torch.max(merged_feat, dim=2)
-        # print("feat : " , feat.shape)
-
-        # feat = merged_feat.transpose(1, 2).contiguous().view(-1, merged_feat.shape[1])
-        # print("feat : " , feat.shape)
-        
-        # pts0_new = clouds0.transpose(1, 2).contiguous().view(-1, clouds0.shape[1])
-        # print("pts0_new : " , pts0_new.shape)
-
-        # out = torch.cat((pts0_new[:, :self._point_dim], feat), dim=1) #origin out
-        # out = out.view(clouds0.shape[0], -1, out.shape[1]).transpose(1, 2).contiguous()
-
-        # PE
-        _, _, encoded_pts0, encoded_pts1 = self._pe(clouds0, clouds1)
-        pe_merged = torch.cat((encoded_pts0, encoded_pts1), dim=1)
-        # print("pe_merged 1 : ", pe_merged.shape)
-        pe_merged = pe_merged.permute(2, 1, 0)
-        # print("pe_merged 2 : ", pe_merged.shape)
-        pe_merged_feat = self._pe_conv(pe_merged)
-        # print("pe_merged_feat : ", pe_merged_feat.shape)
-        pe_feat = pe_merged_feat.transpose(1, 2).contiguous().view(-1, pe_merged_feat.shape[1])
-        # print("pe_feat : " , pe_feat.shape)
-
-        # append features to pts1 pos and separate batches
-        out = torch.cat((pts0[:, :self._point_dim], feat, pe_feat), dim=1) #origin out
-        # print("out : " , out.shape)
-        # merged :  torch.Size([2048, 10, 131])
-        # merged 2:  torch.Size([2048, 131, 10])
-        # merged_feat :  torch.Size([2048, 256, 10])
-        # merged_feat 2:  torch.Size([2048, 256, 10])
-        # feat :  torch.Size([2048, 256])
-        # out :  torch.Size([2048, 259])
-
-        # pts diff 
-        # use_pts_diff = False
-        # if use_pts_diff:
-        #     pos_diff = pos_diff.transpose(1, 2)
-        #     print("pos_diff 2: " , pos_diff.shape)
-        #     new_pos_diff, _ = torch.max(pos_diff, dim=2)
-        #     print("pos_diff : ", pos_diff.shape)
-        #     print("new_pos_diff : ", new_pos_diff.shape)
-        #     out = torch.cat((new_pos_diff, feat), dim=1) #test with diff
-
-        out = out.view(clouds0.shape[0], -1, out.shape[1]).transpose(1, 2).contiguous()
-        # print("(self._input_dim - self._point_dim) : ", (self._input_dim - self._point_dim))
-        # print("self._conv.output_dim()", self._conv.output_dim())
-        # print("out2 : " , out.shape)
-
-        # return transformer_output
-
-        # pos_diff :  torch.Size([2560, 20, 3])
-        # group_pts0[:, :, self._point_dim:] :  torch.Size([2560, 20, 64])
-        # group_pts1[:, :, self._point_dim:] :  torch.Size([2560, 20, 64])
-        # merged :  torch.Size([2560, 20, 131])
-        # merged 2:  torch.Size([2560, 131, 20])
-        # merged_feat :  torch.Size([2560, 256, 20])
-        # feat :  torch.Size([2560, 256])
-        # out :  torch.Size([2560, 259])
-        # out2 :  torch.Size([5, 259, 512]) batch, 3+2c , keypoints
-
-
-        # out2 :  torch.Size([2, 259, 1024])
-        # xyz torch.Size([2, 1024, 3])
-        # feature torch.Size([2, 256, 1024])
-        # enc_pos :  torch.Size([1024, 2, 256])
-        # query_embed :  torch.Size([256, 2, 256])
-        # dec_features :  torch.Size([4, 256, 2, 256])
-        # dec_feature :  torch.Size([2, 256, 1024])
-        # xyz torch.Size([2, 3, 1024])
-        # trans_out torch.Size([2, 259, 1024])
-
-        return out
-
-
-class MotionEmbedding(DEEPCLRTFModule):
-    """Motion embedding for point cloud batch with sorting [template1, template2, ..., source1, source2, ...]."""
-    def __init__(self, **kwargs: Any):
-        super().__init__()
-        self._embedding = MotionEmbeddingBase(**kwargs)
-
-    def output_dim(self):
-        return self._embedding.output_dim()
-
-    # def forward(self, clouds: torch.Tensor) -> torch.Tensor:
-    def forward(self, clouds_dict: Dict) -> torch.Tensor:
-        clouds_dict_buf = clouds_dict
-        merged_clouds = clouds_dict['set_abstract_cloud']
-        batch_dim = int(merged_clouds.shape[0] / 2)
-
-        motion_embed_clouds = self._embedding(merged_clouds[:batch_dim, ...],
-                               merged_clouds[batch_dim:, ...])
-        clouds_dict_buf['motion_embed_clouds'] = motion_embed_clouds
-        return clouds_dict_buf
-
-        # self._embedding(merged_clouds[:batch_dim, ...],
-        #                        merged_clouds[batch_dim:, ...])
-
 
 class TransformerModule(abc.ABC, nn.Module):
     """Abstract base class for 3d points transformer."""
@@ -717,8 +344,13 @@ class ModelTransformer(TransformerModule):
         # print("tgt_xyz : ",tgt_xyz.shape) 
 
         # nn.MultiHeadAttention in encoder expects npoints x batch x channel features
-        
-        enc_xyz, enc_features= self.run_encoder(pre_enc_xyz, pre_enc_features)
+        pre_enc_features = pre_enc_features.permute(2, 0, 1)
+
+        # xyz points are in batch x npointx channel order
+        enc_xyz, enc_features, enc_inds = self.encoder(
+            pre_enc_features, xyz=pre_enc_xyz
+        )
+
         # encoder features: npoints x batch x channel
         # encoder xyz: npoints x batch x 3
 
@@ -816,6 +448,10 @@ class TransformerBase(nn.Module):
         self.rot_output = nn.Linear(linear[-1], label_type.dim, bias=True)
 
 
+        self.pos_embedding = PositionEmbeddingCoordsSine(
+            d_pos=64, pos_type="fourier", normalize=True
+        )
+
         # init weights
         nn.init.xavier_uniform_(self.pos_output.weight)
         nn.init.xavier_uniform_(self.rot_output.weight)
@@ -849,23 +485,43 @@ class TransformerBase(nn.Module):
         # print("src_sa_cloud : ", src_sa_cloud.shape)
         # print("tgt_sa_cloud : ", tgt_sa_cloud.shape)
 
-        trans_src_xyz = src_sa_cloud[:, :self._point_dim,:].transpose(1,2).contiguous() # B x sampled x (3)
-        trans_feature = src_sa_cloud[:, self._point_dim:,:].contiguous() # B x feat x sampled
-        trans_tgt_xyz = tgt_sa_cloud[:, :self._point_dim,:].transpose(1,2).contiguous() # B x sampled x (3)
+        src_xyz = src_sa_cloud[:, :self._point_dim,:].transpose(1,2).contiguous() # B x sampled x (3)
+        src_feat = src_sa_cloud[:, self._point_dim:,:].contiguous() # B x feat x sampled
+        tgt_xyz = tgt_sa_cloud[:, :self._point_dim,:].transpose(1,2).contiguous() # B x sampled x (3)
+        tgt_feat = tgt_sa_cloud[:, self._point_dim:,:].contiguous() # B x feat x sampled
 
-        # print("trans_src_xyz : ", trans_src_xyz)
-        # print("trans_feature : ", trans_feature)
-        # print("target_xyz : ", target_xyz)
+        min_xyz = src_xyz.min(dim=1)[0]
+        max_xyz = src_xyz.max(dim=1)[0]
+        # print(min_xyz)
+        # print(max_xyz)
 
-        # print("trans_src_xyz : ", trans_src_xyz.shape)
-        # print("trans_feature : ", trans_feature.shape)
+        point_cloud_dims = [
+            min_xyz,
+            max_xyz,
+        ]
+
+        # query_embed: batch x channel x npoint
+        src_pe = self.pos_embedding(src_xyz, input_range=point_cloud_dims)
+        tgt_pe = self.pos_embedding(tgt_xyz, input_range=point_cloud_dims)
+
+        # print("src_xyz : ", src_xyz.shape)
+        # print("src_feat : ", src_feat.shape)
+        # print("target_xyz : ", tgt_xyz.shape)
+        # print("target_feat : ", tgt_feat.shape)
+        # print("enc_pos : ", src_pe.shape)
+
+        merged_feat = torch.cat((src_pe, tgt_pe, src_feat, tgt_feat), dim=1)
+        # print("merged_feat : ", merged_feat.shape)
+
+        # print("src_xyz : ", src_xyz.shape)
+        # print("src_feat : ", src_feat.shape)
         # xyz torch.Size([2, 4096, 3])
         # feature torch.Size([2, 256, 4096])
 
         # # xyz: batch x npoints x 3
         # # features: batch x channel x npoints
-        # # print(trans_src_xyz)
-        prediction = self._transformer(trans_src_xyz, trans_feature, trans_tgt_xyz)
+        # # print(src_xyz)
+        prediction = self._transformer(src_xyz, merged_feat, tgt_xyz)
         # print("trans_logits : ", prediction["trans_logits"].shape)
         # print("trans_normalized : ", prediction["trans_normalized"].shape)
         # print("trans_unnormalized : ", prediction["trans_unnormalized"].shape)
@@ -902,10 +558,14 @@ class TransformerBase(nn.Module):
         # }
         clouds_dict_buf['trans'] = pos_x
         clouds_dict_buf['rot'] = pos_x
+
+        clouds_dict_buf['src_set_abstract_cloud'] = src_xyz.contiguous().view(-1, src_xyz.shape[2])
+        clouds_dict_buf['tgt_set_abstract_cloud'] = tgt_xyz.contiguous().view(-1, tgt_xyz.shape[2])
         # clouds_dict_buf['trans'] = pos_x
         # clouds_dict_buf['trans'] = prediction["trans_logits"]
         # clouds_dict_buf['trans'] = prediction["trans_logits"]
-
+        # print(clouds_dict_buf['src_set_abstract_cloud'].shape)
+        # print(clouds_dict_buf['tgt_set_abstract_cloud'].shape)
 
         return clouds_dict_buf
         # return torch.cat((prediction["trans_logits"], prediction["trans_normalized"], prediction["rot_logits"]), dim=2)

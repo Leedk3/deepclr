@@ -10,8 +10,8 @@ data_loader:
 model:
   input_dim: 4
   point_dim: 3
-  label_type: pose3d_dual_quat
-
+  label_type:  pose3d_quat #pose3d_quat pose3d_dual_quat, pose3d_euler#
+ 
   model_type: deepclrtf
   params:
     batch_norm: False
@@ -39,14 +39,14 @@ model:
           NUM_LAYER : 3
           NUM_HEAD :  4
           enc_nlayers : 3
-          enc_dim : 64
+          enc_dim : 256
           enc_nhead : 4
-          enc_ffn_dim : 32
+          enc_ffn_dim : 64
           enc_dropout : 0.1
           enc_activation : "relu"
 
           dec_nlayers : 3
-          dec_dim : 64
+          dec_dim : 256
           dec_nhead : 4
           dec_ffn_dim : 64
           dec_dropout : 0.1
@@ -73,7 +73,11 @@ metrics:
       params:
         p: 2 #2
     - type: rot
-      weights: [50.0] #[200.0]
+      weights: [100.0] #[200.0]
+      params:
+        p: 2
+    - type: chamfer_dist
+      weights: [1.0] #[200.0]
       params:
         p: 2
     # - type: residual_rot #if use_residual is False, it is automatically not considered. 
@@ -82,7 +86,7 @@ metrics:
     #     p: 1
 
   other:
-    - type: quat_norm
+    # - type: quat_norm
     - type: trans_3d #dual_constraint
 
 optimizer:

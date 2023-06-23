@@ -231,6 +231,25 @@ def residual_rot_loss(source_dict: Dict, target: torch.Tensor, label_type: Label
     return _apply_reduction(loss, reduction)
     # return _apply_reduction(loss2, reduction)
 
+def chamfer_distance_loss(source_dict: Dict, target: torch.Tensor, label_type: LabelType, p: int = 2,
+             reduction: Optional[str] = 'mean', eps: float = 1e-8) -> torch.Tensor:
+    source_xyz = source_dict['src_set_abstract_cloud']
+    target_xyz = source_dict['tgt_set_abstract_cloud']
+
+    # Compute pairwise distances between the two point clouds
+    pairwise_distances = torch.cdist(source_xyz, target_xyz)
+    
+    # Compute the minimum distance for each point in point_cloud1
+    min_distances1, _ = torch.min(pairwise_distances, dim=1)
+    
+    # Compute the minimum distance for each point in point_cloud2
+    min_distances2, _ = torch.min(pairwise_distances, dim=0)
+    
+    # Compute the Chamfer Distance as the average of the minimum distances
+    chamfer_loss = torch.mean(min_distances1) + torch.mean(min_distances2)
+    
+    return chamfer_loss    
+
 
 def quat_norm_loss(source_dict: Dict, target: torch.Tensor, label_type: LabelType,
                    reduction: Optional[str] = 'mean') -> torch.Tensor:
@@ -291,6 +310,7 @@ class MetricType(ConfigEnum):
     QUAT_NORM = auto()
     DUAL_CONSTRAINT = auto()
     RESIDUAL_ROT = auto()
+    CHAMFER_DIST = auto()
 
     def fn(self, label_type: LabelType, weights: Optional[torch.Tensor] = None, **kwargs: Any) -> MetricFunction:
         func: Optional[GenericMetricFunction] = None
@@ -313,6 +333,8 @@ class MetricType(ConfigEnum):
             def func(source, target, red): return dual_constraint_loss(source, target, label_type, reduction=red)
         elif self == MetricType.RESIDUAL_ROT:
             def func(source, target, red): return residual_rot_loss(source, target, label_type, reduction=red, **kwargs)
+        elif self == MetricType.CHAMFER_DIST:
+            def func(source, target, red): return chamfer_distance_loss(source, target, label_type, reduction=red, **kwargs)
 
         if func is not None:
             return _weighted_loss_fn(func, weights)

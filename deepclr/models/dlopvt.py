@@ -751,6 +751,19 @@ class MotionEmbeddingBase(nn.Module):
         feat, _ = torch.max(merged_feat, dim=2)
         # print("feat : " , feat.shape)
 
+        # pos_diff :  torch.Size([5120, 20, 3])
+        # group_pts0[:, :, self._point_dim:] :  torch.Size([5120, 20, 128])
+        # group_pts1[:, :, self._point_dim:] :  torch.Size([5120, 20, 128])
+        # group_pts0 :  torch.Size([5120, 20, 131])
+        # group_pts1 :  torch.Size([5120, 20, 131])
+        # merged :  torch.Size([5120, 20, 259])
+        # merged 2:  torch.Size([5120, 259, 20])
+        # merged_feat :  torch.Size([5120, 256, 20])
+        # merged_feat 2:  torch.Size([5120, 256, 20])
+        # feat :  torch.Size([5120, 256])
+        # out :  torch.Size([5120, 259])
+
+
         # append features to pts1 pos and separate batches
         out = torch.cat((pts0[:, :self._point_dim], feat), dim=1) #origin out
         # print("out : " , out.shape)
