@@ -380,7 +380,7 @@ class ModelTransformer(TransformerModule):
         ]
 
         query_xyz, query_embed = self.get_query_embeddings(tgt_xyz, point_cloud_dims)  
-
+        # query_xyz, query_embed = self.get_query_embeddings(enc_xyz, point_cloud_dims)  
 
         # query_embed: batch x channel x npoint
         enc_pos = self.pos_embedding(enc_xyz, input_range=point_cloud_dims)
@@ -424,7 +424,7 @@ class TransformerBase(nn.Module):
         self._append_features = append_features
         self._input_dim = input_dim
         self.transformer_params = transformer_dict
-        self._transformer = ModelTransformer(self.transformer_params, encoder_dim=self.transformer_params.enc_dim, decoder_dim=self.transformer_params.dec_dim, num_queries = 1024)
+        self._transformer = ModelTransformer(self.transformer_params, encoder_dim=self.transformer_params.enc_dim, decoder_dim=self.transformer_params.dec_dim, num_queries = self.transformer_params.num_queries)
 
         self._label_type = label_type
         # print("========Output LAYER TEST ==========\n")
@@ -432,7 +432,7 @@ class TransformerBase(nn.Module):
         # layers
 
         # dense head
-        mlp_layers = [1024, *mlp]
+        mlp_layers = [self.transformer_params.num_queries, *mlp]
         # print("mlp_layers : ", mlp_layers)
         self.pos_conv = Conv1dMultiLayer(mlp_layers, batch_norm=batch_norm)
         # print("output_dim : ", self.conv.output_dim())

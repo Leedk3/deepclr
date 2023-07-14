@@ -10,7 +10,7 @@ data_loader:
 model:
   input_dim: 4
   point_dim: 3
-  label_type:  pose3d_quat #pose3d_quat pose3d_dual_quat, pose3d_euler#
+  label_type:  pose3d_dual_quat #pose3d_quat pose3d_dual_quat, pose3d_euler#
  
   model_type: deepclrtf
   params:
@@ -36,19 +36,18 @@ model:
       name: Transformer
       params:
         transformer_dict :
-          NUM_LAYER : 3
-          NUM_HEAD :  4
+          num_queries : 1024
           enc_nlayers : 3
           enc_dim : 256
           enc_nhead : 4
-          enc_ffn_dim : 64
+          enc_ffn_dim : 16
           enc_dropout : 0.1
           enc_activation : "relu"
 
           dec_nlayers : 3
           dec_dim : 256
-          dec_nhead : 4
-          dec_ffn_dim : 64
+          dec_nhead : 2
+          dec_ffn_dim : 16
           dec_dropout : 0.1
 
           mlp_dropout : 0.1
@@ -68,26 +67,26 @@ model:
 metrics:
   use_residual: False
   loss:
-    - type: trans
-      weights: [1.0] #[1.0]
+    - type: trans_3d
+      weights: [2.0] #[1.0]
       params:
-        p: 2 #2
+        p: 1
     - type: rot
       weights: [100.0] #[200.0]
       params:
         p: 2
-    - type: chamfer_dist
-      weights: [1.0] #[200.0]
-      params:
-        p: 2
+    # - type: chamfer_dist
+    #   weights: [1.0] #[200.0]
+    #   params:
+    #     p: 2
     # - type: residual_rot #if use_residual is False, it is automatically not considered. 
     #   weights: [1.0] #[200.0]
     #   params:
     #     p: 1
 
   other:
-    # - type: quat_norm
-    - type: trans_3d #dual_constraint
+    - type: quat_norm
+    - type: dual_constraint #dual_constraint, trans
 
 optimizer:
   name: Ranger

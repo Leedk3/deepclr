@@ -1195,7 +1195,7 @@ class TransformerBase(nn.Module):
 
         # x = torch.cat(rot_x, pos_x, dim=2)
         output_dict = {
-            "pos": pos_x,
+            "trans": pos_x,
             "rot": rot_x,
         }
         return output_dict
