@@ -1,6 +1,6 @@
 extends: 'deepclr_tf_base.yaml'
 
-identifier: deepclr_tf_00-06
+identifier: deepclr_tf_00-10
 
 data:
   training: ['${KITTI_PATH}/odometry/00.lmdb',
@@ -9,24 +9,17 @@ data:
              '${KITTI_PATH}/odometry/03.lmdb',
              '${KITTI_PATH}/odometry/04.lmdb',
              '${KITTI_PATH}/odometry/05.lmdb',
-             '${KITTI_PATH}/odometry/06.lmdb']
+             '${KITTI_PATH}/odometry/06.lmdb',
+             '${KITTI_PATH}/odometry/07.lmdb',
+             '${KITTI_PATH}/odometry/08.lmdb',
+             '${KITTI_PATH}/odometry/09.lmdb',
+             '${KITTI_PATH}/odometry/10.lmdb']
   validation: ['${KITTI_PATH}/odometry/07.lmdb',
                '${KITTI_PATH}/odometry/08.lmdb',
                '${KITTI_PATH}/odometry/09.lmdb',
                '${KITTI_PATH}/odometry/10.lmdb']
   dataset_type: kitti_odometry_velodyne
   sequential: True
-
-# transforms:
-#   point_noise:
-#     type: normal
-#     scale: 0.01
-#   translation_noise:
-#     type: normal
-#     scale: [0.2, 0.02, 0.02]
-#   rotation_noise_deg:
-#     type: normal
-#     scale: [0.1, 0.1, 1.0]
 
 transforms:
   point_noise:

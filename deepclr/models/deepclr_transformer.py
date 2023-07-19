@@ -943,6 +943,10 @@ class DEEPCLRTF(BaseModel):
         # cloud features
         if not is_feat:
             x = self.cloud_features(x, m=m)
+        else:
+            x = {
+                "set_abstract_cloud": x,
+            } 
 
         # merge
         model_output = self._merge_layers(x)
@@ -976,7 +980,15 @@ class DEEPCLRTF(BaseModel):
 
         # format clouds for pointnet2
         x = x.transpose(1, 2)
-
+        x_dict = {}
         # forward pass
         x = self._cloud_layers(x)
+
+        # set_abstract_cloud = self._cloud_layers(x)
+
+        # output_dict = {
+        #     "src_cloud": x,
+        #     "tgt_cloud": clouds[batch_dim:, ...],
+        #     "set_abstract_cloud": set_abstract_cloud,
+        # } 
         return x

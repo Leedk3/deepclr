@@ -110,8 +110,12 @@ class ModelInferenceHelper:
             if self._is_sequential:
                 if template is not None:
                     raise RuntimeError("Only the source cloud is required for sequential prediction.")
-
-                source = self._model.cloud_features(source.unsqueeze(0))[0, ...]
+                
+                # print('src_cloud : ', self._model.cloud_features(source.unsqueeze(0))['src_cloud'].shape)
+                # print("base 1 : ", source.shape)
+                source = self._model.cloud_features(source.unsqueeze(0))['set_abstract_cloud'][0, ...]
+                # source = self._model.cloud_features(source.unsqueeze(0))[0, ...]
+                # print("base 2 : ", source.shape)
 
                 if self._state is None:
                     # first call
@@ -120,6 +124,7 @@ class ModelInferenceHelper:
                 else:
                     # subsequent call
                     x = self.stack(self._state, source)
+                    # print("base 3 : ", x.shape)
                     y, loss, debug_output = self._model.forward(x, is_feat=True)
                     self._state = source
                     return y['trans'][0, :]
@@ -131,6 +136,17 @@ class ModelInferenceHelper:
                 x = self.stack(template, source)
                 y, _, _ = self._model.forward(x, is_feat=False)
                 return y['trans'][0, :]
+
+            # base 1 :  torch.Size([61310, 4])
+            # torch.Size([1, 61310, 4])
+            # torch.Size([1, 4, 61310])
+            # base 2 :  torch.Size([131, 1024])
+            # base 3 :  torch.Size([2, 131, 1024])
+
+
+        # torch.Size([61263, 4])
+        # torch.Size([131, 1024])
+
 
     def partial_predict(self, source: torch.Tensor, template: Optional[torch.Tensor] = None) -> Optional[torch.Tensor]:
         """

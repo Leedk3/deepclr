@@ -1454,8 +1454,10 @@ class DLOPVT(BaseModel):
             dim = m.shape[-1] - 1
             x[:, :, :dim] = tgm.transform_points(m, x[:, :, :dim])
 
+        print(x.shape)
         # format clouds for pointnet2
         x = x.transpose(1, 2)
+        print(x.shape)
 
         # forward pass
         x = self._cloud_layers(x)
