@@ -1,4 +1,4 @@
-SCENARIO_NAME='20230719_101744_kitti_07-10_DEEPCLRTF'
+SCENARIO_NAME='20230719_172254_kitti_07-10_DEEPCLRTF'
 echo "Start evaluation"
 #./scripts/evaluation.py /home/usrg/scenarios --scenario kitti_07-10
 

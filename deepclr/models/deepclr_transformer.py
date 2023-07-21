@@ -511,9 +511,15 @@ class TransformerBase(nn.Module):
         # print("enc_pos : ", src_pe.shape)
 
         merged_feat = torch.cat((src_pe, tgt_pe, src_feat, tgt_feat), dim=1)
+
+        # print("src_pe : ", src_pe.shape)
+        # print("tgt_pe : ", tgt_pe.shape)
+        # print("src_feat : ", src_feat.shape)
+        # print("tgt_feat : ", tgt_feat.shape)
         # print("merged_feat : ", merged_feat.shape)
 
-        # print("src_xyz : ", src_xyz.shape)
+        print("src_xyz : ", src_xyz.shape)
+        print("tgt_xyz : ", tgt_xyz.shape)
         # print("src_feat : ", src_feat.shape)
         # xyz torch.Size([2, 4096, 3])
         # feature torch.Size([2, 256, 4096])

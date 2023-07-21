@@ -158,6 +158,7 @@ DOCKER_ARGS+=(-v /home/usrg/deepclr/deepclr.egg-info:/home/usrg/deepclr/deepclr.
 # DOCKER_ARGS+=(-v /home/usrg/Data/Dataset/3D_data/localize/dataset:/home/usrg/deepclr/data/original:rw)
 DOCKER_ARGS+=(-e KITTI_PATH="/home/usrg/Data/Dataset/3D_data/kitti_odometry/dataset")
 DOCKER_ARGS+=(-e INDY_PATH="/home/usrg/Data/Dataset/3D_data/racing_dataset")
+DOCKER_ARGS+=(-e MULRAN_PATH="/home/usrg/Data/Dataset/3D_data/MulRan")
 # DOCKER_ARGS+=(-e MODLE_PATH=/home/usrg/deepclr/models)
 DOCKER_ARGS+=(--network=host)
 
