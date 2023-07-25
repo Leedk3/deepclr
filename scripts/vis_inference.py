@@ -120,11 +120,13 @@ def main():
             # print("transform_gt: ", transform_gt[0,3], transform_gt[1,3])
             evaluator.add_transforms(data_name, stamp, transform_pred, transform_gt, t_pred)
 
+            if(i == 0):
+                break
         del df
 
     # save results
-    logger.info("Store results")
-    evaluator.write(output_dir)
+    # logger.info("Store results")
+    # evaluator.write(output_dir)
 
 
 if __name__ == '__main__':

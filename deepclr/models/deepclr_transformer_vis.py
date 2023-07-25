@@ -394,6 +394,85 @@ class ModelTransformer(TransformerModule):
             tgt, enc_features, query_pos=query_embed, pos=enc_pos
         )[0]
 
+        # vis
+        import open3d as o3d
+        # Normalize the attention weights along the query tokens (dim=1)
+        # print(enc_features)
+        # print("dec_features : ",dec_features.sum(dim=3))
+        # dec_feature_vis = torch.sum(dec_features, dim=1)
+        # dec_feature_vis_cloud = enc_pos.squeeze(0)
+        # dec_feature_vis_cloud_np = dec_feature_vis_cloud.squeeze().cpu().detach().numpy()
+        # print("dec_feature_vis_cloud_np : ",dec_feature_vis_cloud_np.shape)
+        # dec_feature_vis_o3d = o3d.geometry.PointCloud()
+        # dec_feature_vis_o3d.points = o3d.utility.Vector3dVector(dec_feature_vis_cloud_np)
+        # o3d.visualization.draw_geometries([dec_feature_vis_o3d])
+
+        # normalized_attention = torch.softmax(dec_features, dim=1)
+        # Sum the normalized attention across all query tokens
+        # print("normalized_attention : ",normalized_attention)
+        aggregated_attention = torch.sum(enc_features, dim=2)
+        # Convert the aggregated_attention tensor to a numpy array for visualization
+        aggregated_attention = aggregated_attention.squeeze().cpu().detach().numpy()
+        print("aggregated_attention : ", aggregated_attention.shape)
+
+        # Convert the point cloud tensor to a numpy array for visualization
+        point_cloud = query_xyz.squeeze(0)
+        # print("point_cloud : ", point_cloud.shape)
+        point_cloud_np = point_cloud.cpu().detach().numpy()
+
+        # # Create an Open3D point cloud from the numpy array
+        point_cloud_o3d = o3d.geometry.PointCloud()
+        point_cloud_o3d.points = o3d.utility.Vector3dVector(point_cloud_np)
+
+
+        point_cloud_o3d_attention = o3d.geometry.PointCloud()
+        point_cloud_o3d_attention.points = o3d.utility.Vector3dVector(point_cloud_np)
+
+        # Set the color for the query point cloud (red)
+        point_cloud_color = [0.0, 0.0, 1.0]  # Red color for query points
+        point_cloud_colors = np.tile(point_cloud_color, (point_cloud_np.shape[0], 1))
+        point_cloud_o3d.colors = o3d.utility.Vector3dVector(point_cloud_colors)
+
+        # Assign the colors to the point cloud
+        # Set the colors for the point cloud based on the aggregated attention scores
+        norm_arr = np.tile(aggregated_attention, (3, 1)).T
+        norm_arr = (norm_arr - norm_arr.min()) / (norm_arr.max() - norm_arr.min())
+        # norm_arr[:,:2] = 0
+        for i, norm_elem in enumerate(norm_arr[:,0]):
+            if(norm_elem < 0.5):
+                norm_arr[i, :] = 1.0
+            else:
+                norm_arr[i, 0] = 0.0
+                norm_arr[i, 2] = 0.0
+
+        # def softmax(x):
+        #     exp_x = np.exp(x - np.max(x, axis=-1, keepdims=True))
+        #     return exp_x / np.sum(exp_x, axis=-1, keepdims=True)
+
+        # norm_arr = softmax(norm_arr)
+        print(norm_arr.shape)
+        point_cloud_o3d_attention.colors = o3d.utility.Vector3dVector(norm_arr)
+        
+
+        
+
+        # colors = o3d.utility.Vector3dVector(aggregated_attention)
+        # point_cloud_o3d.colors = colors
+
+        # Convert the additional_xyz tensor to a numpy array for visualization
+        additional_point_cloud_np = enc_xyz.squeeze().cpu().detach().numpy()
+        print(additional_point_cloud_np.shape)
+        # Create an Open3D point cloud for the additional points
+        additional_point_cloud_o3d = o3d.geometry.PointCloud()
+        additional_point_cloud_o3d.points = o3d.utility.Vector3dVector(additional_point_cloud_np)  # Transpose for correct shape
+
+        # Set a uniform red color for the additional point cloud
+        additional_point_cloud_color = [1.0, 0.0, 0.0]  # Red color for additional points
+        additional_point_cloud_colors = np.tile(additional_point_cloud_color, (additional_point_cloud_np.shape[0], 1))
+        additional_point_cloud_o3d.colors = o3d.utility.Vector3dVector(additional_point_cloud_colors)
+
+        # Visualization using Open3D
+        o3d.visualization.draw_geometries([point_cloud_o3d, point_cloud_o3d_attention, additional_point_cloud_o3d])
         # print("query_xyz : ", query_xyz.shape)
         # print("enc_pos : ", enc_pos.shape)
         # print("query_embed : ", query_embed.shape)

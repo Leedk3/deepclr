@@ -1,0 +1,5 @@
+name: mulran_kaist
+dataset_type: kitti_odometry_velodyne
+sequential: True
+data:
+  'KAIST03': '${MULRAN_PATH}/odometry/KAIST03.lmdb'

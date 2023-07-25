@@ -10,7 +10,7 @@ from deepclr.data.transforms.transforms import SystematicErasing
 
 
 SEQUENCES = ['DCC03', 'KAIST03', 'Sejong03', 'Riverside03']
-NTH = 5
+NTH = 2
 
 
 def convert_sequence(base_path: str, sequence: str, output_file: str) -> None:

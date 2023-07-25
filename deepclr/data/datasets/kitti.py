@@ -46,6 +46,7 @@ class KittiOdometryVelodyneData(RNGDataFlow):
             else:
                 pose = cam2velo(self.data.poses[k], self.calib)
             cloud = self.data.get_velo(k)
+            # print('idx', k, 'timestamp', timestamp_us, 'pose', pose, 'cloud', cloud)
             yield {'idx': k, 'timestamp': timestamp_us, 'pose': pose, 'cloud': cloud}
 
 
