@@ -31,4 +31,4 @@ transforms:
     scale: [0.02, 0.02, 0.02]
   rotation_noise_deg:
     type: normal
-    scale: [0.05, 0.05, 0.25]
+    scale: [0.05, 0.05, 0.5]

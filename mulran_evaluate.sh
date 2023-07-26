@@ -1,4 +1,4 @@
-SCENARIO_NAME='20230725_113125_mulran_kaist_ICP_PO2PL'
+SCENARIO_NAME='20230725_113111_mulran_kaist_GICP'
 echo "Start evaluation"
 #./scripts/evaluation.py /home/usrg/scenarios --scenario kitti_07-10
 
