@@ -36,13 +36,13 @@ if __name__ == '__main__':
         version=version,
         description='OpenPCDet is a general codebase for 3D object detection from point cloud',
         install_requires=[
-            'numpy',
+            'numpy==1.22',
             'llvmlite',
-            'numba',
+            # 'numba',
             'tensorboardX',
             'easydict',
             'pyyaml',
-            'scikit-image',
+            # 'scikit-image',
             'tqdm',
             'SharedArray',
             # 'spconv',  # spconv has different names depending on the cuda version

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.8
 import os
 import os.path as osp
 
@@ -11,6 +11,8 @@ from deepclr.data.transforms.transforms import SystematicErasing
 
 SEQUENCES = ['00', '01', '02', '03', '04', '05', '06', '07', '08', '09', '10',
              '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21']
+# SEQUENCES = ['00', '01', '02', '03', '04', '05']
+
 NTH = 2
 
 

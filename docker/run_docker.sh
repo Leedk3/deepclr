@@ -18,12 +18,12 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 DEEPCLR_DIR="$(readlink -f "${SCRIPT_DIR}/../")"
 
 # default config
-GPU_NUM="1"
+GPU_NUM="0"
 CONTAINER_NAME="deepclr-pcdet-${GPU_NUM}"
 
 IMAGE_REGISTRY="docker.pkg.github.com/mhorn11/deepclr/"
 IMAGE_NAME="deepclr"
-IMAGE_TAG="pcdet"
+IMAGE_TAG="cuda11.1"
 
 # read arguments
 while [[ $# -gt 0 ]]; do
@@ -102,8 +102,8 @@ fi
 # docker arguments
 DOCKER_ARGS=(
   # mount DeepCLR directory
-  -v "${DEEPCLR_DIR}":"${DEEPCLR_DIR}"
-
+  -v "${DEEPCLR_DIR}":"/deepclr"
+  --runtime nvidia
   # xserver access for visualization in test scripts
   -v /tmp/.X11-unix:/tmp/.X11-unix:rw
   -e DISPLAY="${DISPLAY}"
@@ -140,27 +140,39 @@ if [[ -n "${MODEL_PATH}" ]]; then
 fi
 
 # user
-if [ "${USER}" = 1 ]; then
-  DOCKER_ARGS+=(
-    -v /etc/passwd:/etc/passwd:ro
-    -v /etc/group:/etc/group:ro
-    --user "$(id -u):$(id -g)"
-    -v "${HOME}:${HOME}"
-  )
-else
-  DOCKER_ARGS+=(
-    --user 10000:10001
-  )
-fi
+# if [ "${USER}" = 1 ]; then
+#   DOCKER_ARGS+=(
+#     -v /etc/passwd:/etc/passwd:rw
+#     -v /etc/group:/etc/group:ro
+#     --user "$(id -u):$(id -g)"
+#     -v "${HOME}:${HOME}"
+#   )
+# else
+#   DOCKER_ARGS+=(
+#     --user 10000:10001
+#   )
+# fi
 
 # my statement
-DOCKER_ARGS+=(-v /home/usrg/deepclr/deepclr.egg-info:/home/usrg/deepclr/deepclr.egg-info:rw)
-# DOCKER_ARGS+=(-v /home/usrg/Data/Dataset/3D_data/localize/dataset:/home/usrg/deepclr/data/original:rw)
-DOCKER_ARGS+=(-e KITTI_PATH="/home/usrg/Data/Dataset/3D_data/kitti_odometry/dataset")
-DOCKER_ARGS+=(-e INDY_PATH="/home/usrg/Data/Dataset/3D_data/racing_dataset")
-DOCKER_ARGS+=(-e MULRAN_PATH="/home/usrg/Data/Dataset/3D_data/MulRan")
-# DOCKER_ARGS+=(-e MODLE_PATH=/home/usrg/deepclr/models)
+DOCKER_ARGS+=(-v /home/leedk/deepclr/deepclr.egg-info:/deepclr/deepclr.egg-info:z)
+DOCKER_ARGS+=(-v /media/leedk/dataset/Dataset/etri/dataset:/deepclr/etri/original:z)
+DOCKER_ARGS+=(-v /media/leedk/dataset/Dataset/etri/dataset/odometry:/deepclr/etri/odometry:z)
+DOCKER_ARGS+=(-e ETRI_PATH="/deepclr/etri")
+
+DOCKER_ARGS+=(-v /home/leedk/deepclr/deepclr.egg-info:/deepclr/deepclr.egg-info:z)
+DOCKER_ARGS+=(-v /media/leedk/dataset/Dataset/kitti/dataset:/deepclr/kitti/original:z)
+DOCKER_ARGS+=(-v /media/leedk/dataset/Dataset/kitti/dataset/odometry:/deepclr/kitti/odometry:z)
+DOCKER_ARGS+=(-e KITTI_PATH="/deepclr/kitti")
+
+
+# DOCKER_ARGS+=(-e INDY_PATH="/media/leedk/dataset/Dataset/3D_data/racing_dataset")
+# DOCKER_ARGS+=(-e MULRAN_PATH="/media/leedk/dataset/Dataset/3D_data/MulRan")
+# DOCKER_ARGS+=(-e MODLE_PATH=/home/leedk/deepclr/models)
 DOCKER_ARGS+=(--network=host)
+
+DOCKER_ARGS+=(--shm-size=10g)
+DOCKER_ARGS+=(--ulimit memlock=-1)
+
 
 # mount directories
 for dir in "${MOUNT_DIRS[@]}"; do

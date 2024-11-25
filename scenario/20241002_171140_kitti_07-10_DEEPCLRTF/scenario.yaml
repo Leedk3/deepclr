@@ -1,0 +1,14 @@
+name: kitti_07-10
+dataset_type: KITTI_ODOMETRY_VELODYNE
+sequential: true
+data:
+  '07': /deepclr/etri/odometry/07.lmdb
+  08: /deepclr/etri/odometry/08.lmdb
+  09: /deepclr/etri/odometry/09.lmdb
+  '10': /deepclr/etri/odometry/10.lmdb
+method:
+  name: DEEPCLRTF
+  params:
+    model_name: 20240828_085400_deepclr_tf_00-10
+    model_file: /deepclr/models/20240828_085400_deepclr_tf_00-10/model_config.yaml
+    weights_file: /deepclr/models/20240828_085400_deepclr_tf_00-10/weights.tar

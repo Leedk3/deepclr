@@ -119,6 +119,11 @@ def main():
             # print("transform_pred: ", transform_pred)
             # print("transform_gt: ", transform_gt[0,3], transform_gt[1,3])
             evaluator.add_transforms(data_name, stamp, transform_pred, transform_gt, t_pred)
+            # print("data_name : ", data_name)
+            # print("stamp : ", stamp)
+            # print("transform_pred : ", transform_pred)
+            # print("transform_gt : ", transform_gt)
+            # print("t_pred : ", t_pred)
 
         del df
 

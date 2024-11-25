@@ -63,17 +63,17 @@ RUN apt-get update && apt-get install -q -y --no-install-recommends \
 
 # Python dependencies
 COPY requirements.txt /tmp/requirements.txt
-# RUN python -m pip install torch-cluster==1.5.9 -f https://pytorch-geometric.com/whl/torch-1.8.0+cu111.html
-# RUN python -m pip install spconv-cu111
-# RUN python -m pip install --upgrade git+https://github.com/klintan/pypcd.git
-# RUN python -m pip install pillow==8.3.2
-# RUN python -m pip install trimesh
-# RUN python -m pip install torchsummary
-# RUN python -m pip install scikit-learn
-# RUN python -m pip install plotly
-# RUN python -m pip install dash
-# RUN python -m pip install pyorbital
-# RUN apt install -y libgl1-mesa-glx
+RUN python -m pip install torch-cluster==1.5.9 -f https://pytorch-geometric.com/whl/torch-1.8.0+cu111.html
+RUN python -m pip install spconv-cu111
+RUN python -m pip install --upgrade git+https://github.com/klintan/pypcd.git
+RUN python -m pip install pillow==8.3.2
+RUN python -m pip install trimesh
+RUN python -m pip install torchsummary
+RUN python -m pip install scikit-learn
+RUN python -m pip install plotly
+RUN python -m pip install dash
+RUN python -m pip install pyorbital
+RUN apt install -y libgl1-mesa-glx
 
 # RUN apt-get update && apt-get install -y tmux tmuxp vim 
 # RUN apt-get install -y 
@@ -82,16 +82,18 @@ COPY requirements.txt /tmp/requirements.txt
 RUN chmod go+w /opt/conda/lib/python3.8/site-packages    
 
 RUN python -m pip install -r /tmp/requirements.txt && rm /tmp/requirements.txt
+RUN python -m pip install scikit-image easy_dict llvmlite numba
 
 COPY pcdet /tmp/pcdet/pcdet
 COPY setup_pcdet.py /tmp/pcdet
-RUN cd /tmp/pcdet \
-	&& python setup_pcdet.py install \
-	&& rm -rf /tmp/pcdet
+# RUN cd /tmp/pcdet \
+# 	&& python setup_pcdet.py install \
+# 	&& rm -rf /tmp/pcdet
 
 # CUDA settings
 ENV NVIDIA_DRIVER_CAPABILITIES compute,utility,graphics
-ENV TORCH_CUDA_ARCH_LIST="6.1 7.5+PTX"
+# ENV TORCH_CUDA_ARCH_LIST="6.1 7.5+PTX"
+ARG TORCH_CUDA_ARCH_LIST="8.6+PTX"
 
 # External dependencies
 COPY extern /tmp/extern
@@ -116,8 +118,8 @@ COPY deepclr /tmp/deepclr/deepclr
 RUN chown -R ${USER}:${USER} /tmp/deepclr/deepclr
 RUN chmod 755 /tmp/deepclr/deepclr
 
-RUN chown -R ${USER}:${USER} /home/usrg/deepclr
-RUN chmod 755 /home/usrg/deepclr
+# RUN chown -R ${USER}:${USER} /home/leedk/deepclr
+# RUN chmod 755 /home/leedk/deepclr
 
 # RUN conda uninstall traitlets
 # RUN conda uninstall Jinja2

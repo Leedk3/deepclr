@@ -2,8 +2,13 @@ ARG TAG
 
 FROM pytorch/pytorch:1.8.1-cuda11.1-cudnn8-devel
 
+# FROM pytorch/pytorch:2.4.0-cuda12.1-cudnn9-devel
+
 RUN rm /etc/apt/sources.list.d/cuda.list
 RUN rm /etc/apt/sources.list.d/nvidia-ml.list
+ENV CUDA_HOME=/usr/local/cuda
+ENV PATH=/usr/local/cuda/bin:${PATH}
+ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:${LD_LIBRARY_PATH}
 
 # System dependencies
 RUN apt-get update && apt-get install -q -y --no-install-recommends \
@@ -59,7 +64,8 @@ RUN python -m pip install -r /tmp/requirements.txt && rm /tmp/requirements.txt
 
 # CUDA settings
 ENV NVIDIA_DRIVER_CAPABILITIES compute,utility,graphics
-ENV TORCH_CUDA_ARCH_LIST="6.1 7.5+PTX"
+# ENV TORCH_CUDA_ARCH_LIST="8.6"
+ARG TORCH_CUDA_ARCH_LIST="8.6+PTX"
 
 # External dependencies
 COPY extern /tmp/extern

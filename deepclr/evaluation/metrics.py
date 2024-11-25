@@ -170,11 +170,33 @@ class MetricsContainer:
                              for x in data])
 
         # get stats
-        def min_func(x): return np.min(x, axis=0)
-        def max_func(x): return np.max(x, axis=0)
-        def mean_func(x): return np.mean(x, axis=0)
-        def median_func(x): return np.median(x, axis=0)
-        def std_func(x): return np.std(x, axis=0)
+        # def min_func(x): return np.min(x, axis=0)
+        # def max_func(x): return np.max(x, axis=0)
+        # def mean_func(x): return np.mean(x, axis=0)
+        # def median_func(x): return np.median(x, axis=0)
+        # def std_func(x): return np.std(x, axis=0)
+
+        def min_func(x):
+            if x.size == 0:
+                print(x)
+                raise ValueError("Cannot compute minimum of an empty array")
+            return np.min(x, axis=0)
+        def max_func(x):
+            if x.size == 0:
+                raise ValueError("Cannot compute max of an empty array")
+            return np.max(x, axis=0)
+        def mean_func(x):
+            if x.size == 0:
+                raise ValueError("Cannot compute mean of an empty array")
+            return np.mean(x, axis=0)
+        def median_func(x):
+            if x.size == 0:
+                raise ValueError("Cannot compute median of an empty array")
+            return np.median(x, axis=0)
+        def std_func(x):
+            if x.size == 0:
+                raise ValueError("Cannot compute std of an empty array")
+            return np.std(x, axis=0)
 
         self.min = TransformationMetrics(TranslationError(**_apply_function(min_func, trans_arrs)),
                                          RotationError(**_apply_function(min_func, rot_arrs)),

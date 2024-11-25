@@ -5,7 +5,7 @@ lmdb==1.1.1
 matplotlib==3.4.1
 mypy==0.812
 numpy==1.20.2
-open3d==0.12.0
+open3d==0.13.0 #sklearn is deprecated. Therefore, the version of open3d package should be specified.
 opencv-python==4.5.1.48
 pandas==1.2.4
 pybind11==2.6.2
@@ -24,7 +24,7 @@ torch==1.8.1
 torch-cluster==1.5.9 -f https://pytorch-geometric.com/whl/torch-1.8.0+cu111.html
 torchgeometry==0.1.2
 torchvision==0.9.1
-transforms3d==0.3.1
+transforms3d #==0.3.1
 vtk==9.0.1
 protobuf==3.20.*
 

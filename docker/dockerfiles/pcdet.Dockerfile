@@ -23,11 +23,13 @@ RUN python -m pip install --upgrade git+https://github.com/klintan/pypcd.git
 RUN python -m pip install pillow==8.3.2
 RUN python -m pip install trimesh
 RUN python -m pip install torchsummary
-RUN python -m pip install scikit-learn
+RUN python -m pip install scikit-learn scikit-image
 RUN python -m pip install plotly
 RUN python -m pip install dash
 RUN python -m pip install pyorbital
 # RUN apt install -y libgl1-mesa-glx
+
+RUN python -m pip install numba
 
 # RUN apt-get update && apt-get install -y tmux tmuxp vim 
 RUN apt-get install -y x11-xserver-utils

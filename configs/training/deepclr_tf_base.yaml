@@ -1,11 +1,11 @@
-base_dir: /home/usrg/deepclr/models #'${MODEL_PATH}'
+base_dir: /deepclr/models #'${MODEL_PATH}'
 device: cuda
 
 data_loader:
   parallel_loading: True
   num_workers: 6
-  batch_size: 5
-  buffer_size: 10
+  batch_size: 10
+  buffer_size: 20
 
 model:
   input_dim: 4
@@ -90,7 +90,7 @@ metrics:
 
 optimizer:
   name: Ranger
-  max_iterations: 1600000 # 800000
+  max_iterations: 800000
   base_lr: 0.0005
   weight_decay: 0.001
   bias_lr_factor: 2.0

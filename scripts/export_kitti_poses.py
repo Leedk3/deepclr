@@ -23,14 +23,20 @@ def convert_poses(evaluator: Evaluator, kitti_base_path: str, sequence_name: str
     # load kitti calib
     kitti = pykitti.odometry(kitti_base_path, sequence_name)
     calib = kitti.calib.T_cam0_velo
+    # calib = kitti.calib.T_cam0_velo
+    # print(calib)
 
     # iterate predicted poses
     sequence = evaluator.get_sequence(sequence_name)
     kitti_poses = [mat_to_vec(velo2cam(pose, calib))
                    for pose in sequence.prediction.poses]
 
+    gt_poses = [mat_to_vec(velo2cam(pose, calib))
+                   for pose in sequence.ground_truth.poses]
+
     # save poses
     np.savetxt(osp.join(output_dir, f'{sequence_name}.txt'), np.array(kitti_poses))
+    np.savetxt(osp.join(output_dir, f'{sequence_name}_gt.txt'), np.array(gt_poses))
 
 
 def main():

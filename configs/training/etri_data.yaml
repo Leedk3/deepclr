@@ -1,0 +1,31 @@
+extends: 'deepclr_tf_base.yaml'
+
+identifier: etri_deepclr_tf_00-10
+
+data:
+  training: ['${KITTI_PATH}/odometry/00.lmdb',
+             '${KITTI_PATH}/odometry/01.lmdb',
+             '${KITTI_PATH}/odometry/02.lmdb',
+             '${KITTI_PATH}/odometry/03.lmdb',
+             '${KITTI_PATH}/odometry/04.lmdb',
+             '${KITTI_PATH}/odometry/05.lmdb']
+  validation: ['${KITTI_PATH}/odometry/00.lmdb',
+               '${KITTI_PATH}/odometry/01.lmdb',
+               '${KITTI_PATH}/odometry/02.lmdb',
+               '${KITTI_PATH}/odometry/03.lmdb',
+               '${KITTI_PATH}/odometry/04.lmdb',
+               '${KITTI_PATH}/odometry/05.lmdb']
+
+  dataset_type: kitti_odometry_velodyne
+  sequential: True
+
+transforms:
+  point_noise:
+    type: normal
+    scale: 0.01
+  translation_noise:
+    type: normal
+    scale: [0.02, 0.02, 0.02]
+  rotation_noise_deg:
+    type: normal
+    scale: [0.05, 0.05, 0.05]
