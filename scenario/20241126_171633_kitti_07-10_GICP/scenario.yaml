@@ -1,0 +1,14 @@
+name: kitti_07-10
+dataset_type: KITTI_ODOMETRY_VELODYNE
+sequential: true
+data:
+  '07': /deepclr/kitti/odometry/07.lmdb
+  08: /deepclr/kitti/odometry/08.lmdb
+  09: /deepclr/kitti/odometry/09.lmdb
+  '10': /deepclr/kitti/odometry/10.lmdb
+method:
+  name: GICP
+  params:
+    max_distance: 1.0
+    neighbor_radius: 1.0
+    max_nn: 30

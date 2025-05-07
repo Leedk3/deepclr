@@ -1,0 +1,16 @@
+name: etri_00-05
+dataset_type: KITTI_ODOMETRY_VELODYNE
+sequential: true
+data:
+  '00': /deepclr/etri/odometry/00.lmdb
+  '01': /deepclr/etri/odometry/01.lmdb
+  '02': /deepclr/etri/odometry/02.lmdb
+  '03': /deepclr/etri/odometry/03.lmdb
+  '04': /deepclr/etri/odometry/04.lmdb
+  '05': /deepclr/etri/odometry/05.lmdb
+method:
+  name: GICP
+  params:
+    max_distance: 1.0
+    neighbor_radius: 1.0
+    max_nn: 30

@@ -135,6 +135,159 @@ class SetAbstraction(DEEPCLRTFModule):
             # clouds :  torch.Size([10, 67, 1024])
 
 
+class GroupingModule(abc.ABC, nn.Module):
+    """Abstract base class for point cloud grouping."""
+    def __init__(self):
+        super().__init__()
+
+    @abc.abstractmethod
+    def forward(self, cloud0: torch.Tensor, cloud1: torch.Tensor)\
+            -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        raise NotImplementedError
+
+
+class GlobalGrouping(GroupingModule):
+    """Group points over the whole point cloud."""
+    def __init__(self):
+        super().__init__()
+
+    @staticmethod
+    def _prepare_batch(cloud: torch.Tensor) -> torch.Tensor:
+        pts = cloud.transpose(1, 2).contiguous().view(-1, cloud.shape[1])
+        return pts
+
+    def forward(self, cloud0: torch.Tensor, cloud1: torch.Tensor) \
+            -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        # prepare data
+        pts0 = self._prepare_batch(cloud0)
+        pts1 = self._prepare_batch(cloud1)
+
+        # select all points from pts2 for each point of pts1
+        idx0 = pts0.new_empty((pts0.shape[0], 1), dtype=torch.long)
+        torch.arange(pts0.shape[0], out=idx0)
+        idx0 = idx0.repeat(1, cloud1.shape[2])
+
+        idx1 = pts1.new_empty((1, pts1.shape[0]), dtype=torch.long)
+        torch.arange(pts1.shape[0], out=idx1)
+        idx1 = idx1.view(cloud1.shape[0], -1).repeat(1, cloud0.shape[2]).view(idx0.shape)
+
+        group_index = torch.stack((idx0, idx1))
+
+        # get group data [group, point_dim, group points] and subtract sample (center) pos
+        group_pts0 = pts0[group_index[0, ...]]
+        group_pts1 = pts1[group_index[1, ...]]
+
+        return pts0, pts1, group_pts0, group_pts1
+
+
+class KnnGrouping(GroupingModule):
+    """Group points with k nearest neighbor."""
+    def __init__(self, point_dim: int, k: int):
+        super().__init__()
+        self._point_dim = point_dim
+        self._k = k
+
+    @staticmethod
+    def _prepare_batch(clouds: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        pts = clouds.transpose(1, 2).contiguous().view(-1, clouds.shape[1])
+        batch = pts.new_empty(clouds.shape[0], dtype=torch.long)
+        torch.arange(clouds.shape[0], out=batch)
+        batch = batch.view(-1, 1).repeat(1, clouds.shape[2]).view(-1)
+        return pts, batch
+
+    def forward(self, cloud0: torch.Tensor, cloud1: torch.Tensor)\
+            -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        # prepare data
+        pts0, batch0 = self._prepare_batch(cloud0)
+        pts1, batch1 = self._prepare_batch(cloud1)
+
+        # select k nearest points from pts1 for each point of pts0
+        group_index = knn(pts1[:, :self._point_dim].contiguous().detach(),
+                          pts0[:, :self._point_dim].contiguous().detach(),
+                          k=self._k, batch_x=batch1, batch_y=batch0)
+        group_index = group_index.view(2, pts0.shape[0], self._k)
+
+        # get group data [group, point_dim, group points] and subtract sample (center) pos
+        group_pts0 = pts0[group_index[0, ...]]
+        group_pts1 = pts1[group_index[1, ...]]
+
+        return pts0, pts1, group_pts0, group_pts1
+
+
+class MotionEmbeddingBase(nn.Module):
+    """Base implementation for motion embedding to merge point clouds."""
+    _grouping: GroupingModule
+
+    def __init__(self, input_dim: int, point_dim: int, k: int, radius: float, mlp: List[int],
+                 append_features: bool = True, batch_norm: bool = False, **_kwargs: Any):
+        super().__init__()
+        self._point_dim = point_dim
+        self._append_features = append_features
+
+        if k == 0:
+            self._grouping = GlobalGrouping()
+        else:
+            self._grouping = KnnGrouping(point_dim, k)
+
+        if self._append_features:
+            mlp_layers = [point_dim + 2 * (input_dim - point_dim), *mlp]
+        else:
+            mlp_layers = [input_dim, *mlp]
+        self._conv = Conv1dMultiLayer(mlp_layers, batch_norm=batch_norm)
+        self._radius = radius
+
+    def output_dim(self) -> int:
+        return self._point_dim + self._conv.output_dim()
+
+    def forward(self, clouds0: torch.Tensor, clouds1: torch.Tensor) -> torch.Tensor:
+        # group
+        pts0, pts1, group_pts0, group_pts1 = self._grouping(clouds0, clouds1)
+
+        # merge
+        pos_diff = group_pts1[:, :, :self._point_dim] - group_pts0[:, :, :self._point_dim]
+
+        if self._append_features:
+            merged = torch.cat((pos_diff, group_pts0[:, :, self._point_dim:], group_pts1[:, :, self._point_dim:]),
+                               dim=2)
+        else:
+            merged = torch.cat((pos_diff, group_pts1[:, :, self._point_dim:] - group_pts0[:, :, self._point_dim:]),
+                               dim=2)
+
+        # run pointnet
+        merged = merged.transpose(1, 2)
+        merged_feat = self._conv(merged)
+
+        # radius
+        if self._radius > 0.0:
+            pos_diff_norm = torch.norm(pos_diff, dim=2)
+            mask = pos_diff_norm >= self._radius
+            merged_feat.masked_scatter_(mask.unsqueeze(1), merged_feat.new_zeros(merged_feat.shape))
+
+        feat, _ = torch.max(merged_feat, dim=2)
+
+        # append features to pts1 pos and separate batches
+        out = torch.cat((pts0[:, :self._point_dim], feat), dim=1)
+        out = out.view(clouds0.shape[0], -1, out.shape[1]).transpose(1, 2).contiguous()
+
+        return out
+
+
+# class MotionEmbedding(DEEPCLRTFModule):
+#     """Motion embedding for point cloud batch with sorting [template1, template2, ..., source1, source2, ...]."""
+#     def __init__(self, **kwargs: Any):
+#         super().__init__()
+#         self._embedding = MotionEmbeddingBase(**kwargs)
+
+#     def output_dim(self):
+#         return self._embedding.output_dim()
+
+#     def forward(self, clouds: torch.Tensor) -> torch.Tensor:
+#         batch_dim = int(clouds.shape[0] / 2)
+#         return self._embedding(clouds[:batch_dim, ...],
+#                                clouds[batch_dim:, ...])
+
+
+
 class TransformerModule(abc.ABC, nn.Module):
     """Abstract base class for 3d points transformer."""
     def __init__(self):
@@ -423,8 +576,11 @@ class ModelTransformer(TransformerModule):
 
 class TransformerBase(nn.Module):
     _transformer: ModelTransformer
+    _grouping: GroupingModule
+    
+    
     def __init__(self, input_dim: int, point_dim: int,
-                transformer_dict: Dict, label_type: LabelType, mlp: List[int], linear: List[int],
+                transformer_dict: Dict, label_type: LabelType, mlp: List[int], linear: List[int], k: int, radius: float, mlp_knn: List[int],
                 append_features: bool = True, batch_norm: bool = False, dropout: bool = False, **_kwargs: Any):
         super().__init__()
         self._point_dim = point_dim
@@ -469,6 +625,37 @@ class TransformerBase(nn.Module):
                 self.pos_output.bias.data[i] = v
                 self.rot_output.bias.data[i] = v
 
+        if k == 0:
+            self._grouping = GlobalGrouping()
+        else:
+            self._grouping = KnnGrouping(point_dim, k)
+
+        if self._append_features:
+            mlp_layers = [point_dim + 2 * (input_dim - point_dim), *mlp_knn]
+        else:
+            mlp_layers = [input_dim, *mlp_knn]
+        self._conv = Conv1dMultiLayer(mlp_layers, batch_norm=batch_norm)
+
+        # if self._append_features:
+        #     mlp_layers = [input_dim, *mlp_knn]
+        # self._conv = Conv1dMultiLayer(mlp_layers, batch_norm=batch_norm)
+
+        self._radius = radius
+
+        # self.pe_encoder: typically Conv1D or MLP
+        self.pe_encoder = nn.Sequential(
+            nn.Conv1d(in_channels=256 + 1, out_channels=256, kernel_size=1),
+            nn.ReLU(),
+            nn.Conv1d(256, 256, kernel_size=1)
+        )
+
+        # 후속 처리
+        self.fused_encoder = nn.Sequential(
+            nn.Conv1d(256 + 256, 256, kernel_size=1),
+            nn.ReLU(),
+            nn.Conv1d(256, 256, kernel_size=1)
+        )
+
     def _output_activation(self, x: torch.Tensor) -> torch.Tensor:
         if self._label_type == LabelType.POSE3D_QUAT:
             x[:, 3] = torch.sigmoid(x[:, 3])
@@ -488,6 +675,49 @@ class TransformerBase(nn.Module):
         batch_dim = int(sa_cloud.shape[0] / 2)
         src_sa_cloud = sa_cloud[:batch_dim, ...] #B x (3+feat) x sampled
         tgt_sa_cloud = sa_cloud[batch_dim:, ...] #B x (3+feat) x sampled
+
+
+        # # group_test
+        # pts0, pts1, group_pts0, group_pts1 = self._grouping(src_sa_cloud, tgt_sa_cloud)
+
+        # # merge
+        # pos_diff = group_pts1[:, :, :self._point_dim] - group_pts0[:, :, :self._point_dim]
+
+        # if self._append_features:
+        #     merged = torch.cat((pos_diff, group_pts0[:, :, self._point_dim:], group_pts1[:, :, self._point_dim:]),
+        #                        dim=2)
+        # else:
+        #     merged = torch.cat((pos_diff, group_pts1[:, :, self._point_dim:] - group_pts0[:, :, self._point_dim:]),
+        #                        dim=2)
+        # # print("merged : ", merged.shape)
+
+        # # run pointnet
+        # merged = merged.transpose(1, 2)
+        
+        # # print("merged2 : ", merged.shape)
+        
+        # merged_feat = self._conv(merged)
+        
+        # # print("merged_feat : ", merged_feat.shape)
+        
+
+        # # radius
+        # if self._radius > 0.0:
+        #     pos_diff_norm = torch.norm(pos_diff, dim=2)
+        #     mask = pos_diff_norm >= self._radius
+        #     merged_feat.masked_scatter_(mask.unsqueeze(1), merged_feat.new_zeros(merged_feat.shape))
+
+        # feat, _ = torch.max(merged_feat, dim=2)
+        # # print("feat : ", feat.shape)
+
+        # # append features to pts1 pos and separate batches
+        # # out = torch.cat((pts0[:, :self._point_dim], feat), dim=1)
+        # out = torch.cat((pts0[:, :self._point_dim], feat), dim=1)
+        # # print("out 1: ", out.shape)
+        # # print("src_sa_cloud: ", src_sa_cloud.shape)
+        # out = out.view(src_sa_cloud.shape[0], -1, out.shape[1]).transpose(1, 2).contiguous()
+        # # print("out 2: ", out.shape)
+
 
         # print("src_sa_cloud : ", src_sa_cloud.shape)
         # print("tgt_sa_cloud : ", tgt_sa_cloud.shape)
@@ -510,6 +740,45 @@ class TransformerBase(nn.Module):
         # query_embed: batch x channel x npoint
         src_pe = self.pos_embedding(src_xyz, input_range=point_cloud_dims)
         tgt_pe = self.pos_embedding(tgt_xyz, input_range=point_cloud_dims)
+        similarity = torch.einsum('bdn,bdm->bnm', src_pe, tgt_pe)  # cross-attention style
+
+        # 2. attention weights from similarity (already computed)
+        attn_weight = torch.softmax(similarity, dim=-1)  # [B, N, M]
+
+        # 3. apply attention to tgt_feat
+        # transpose tgt_feat from [B, D', M] → [B, M, D']
+        tgt_feat_t = tgt_feat.transpose(1, 2)  # [B, M, D']
+        fused = torch.bmm(attn_weight, tgt_feat_t)  # [B, N, D']
+
+        # 4. transpose fused to [B, D', N]
+        fused = fused.transpose(1, 2)
+        # print("fused : ", fused.shape)
+        # print("src_feat : ", src_feat.shape)
+        
+        # === [여기부터 Motion-aware Fusion Block] ===
+        # Motion residual (change between source and attended target)
+        motion_residual = fused - src_feat  # [B, D, N]
+        motion_magnitude = torch.norm(motion_residual, dim=1, keepdim=True)  # [B, 1, N]
+
+        # Combine source, fused target, and residual
+        combined = torch.cat([src_feat, fused, tgt_feat, motion_residual, motion_magnitude], dim=1)  # [B, 4*D + 1, N]
+
+        encoded = self.pe_encoder(combined)  # [B, D_model, N]
+
+        # print("similarity : ", similarity.shape)
+        # print("attn_weight : ", attn_weight.shape)
+        # print("tgt_feat_t : ", tgt_feat_t.shape)
+        # print("fused : ", fused.shape)
+        # print("encoded : ", encoded.shape)
+        # combined = torch.cat((encoded, out), dim=1)
+        # print("combined : ", combined.shape)
+        
+        # final_feat = self.fused_encoder(combined)  # [B, D_out, N]
+        # print("final_feat : ", final_feat.shape)
+
+        # merged_pe = torch.cat((similarity, src_feat, tgt_feat),
+        #                             dim=2)
+        # print("merged_pe : ", merged_pe.shape)
 
         # print("src_xyz : ", src_xyz.shape)
         # print("src_feat : ", src_feat.shape)
@@ -517,24 +786,26 @@ class TransformerBase(nn.Module):
         # print("target_feat : ", tgt_feat.shape)
         # print("enc_pos : ", src_pe.shape)
 
-        merged_feat = torch.cat((src_pe, tgt_pe, src_feat, tgt_feat), dim=1)
+        # merged_feat = torch.cat((src_pe, tgt_pe, src_feat, tgt_feat), dim=1)
+        # merged_feat2 = torch.cat((fused, out), dim=1)
 
         # print("src_pe : ", src_pe.shape)
         # print("tgt_pe : ", tgt_pe.shape)
         # print("src_feat : ", src_feat.shape)
         # print("tgt_feat : ", tgt_feat.shape)
         # print("merged_feat : ", merged_feat.shape)
+        # print("merged_feat2 : ", merged_feat2.shape)
 
         # print("src_xyz : ", src_xyz.shape)
         # print("tgt_xyz : ", tgt_xyz.shape)
-        # print("src_feat : ", src_feat.shape)
+
         # xyz torch.Size([2, 4096, 3])
         # feature torch.Size([2, 256, 4096])
 
         # # xyz: batch x npoints x 3
         # # features: batch x channel x npoints
         # # print(src_xyz)
-        prediction = self._transformer(src_xyz, merged_feat, tgt_xyz)
+        prediction = self._transformer(src_xyz, encoded, tgt_xyz)
         # print("trans_logits : ", prediction["trans_logits"].shape)
         # print("trans_normalized : ", prediction["trans_normalized"].shape)
         # print("trans_unnormalized : ", prediction["trans_unnormalized"].shape)
@@ -591,6 +862,7 @@ class Transformer(DEEPCLRTFModule):
     def __init__(self, **kwargs: Any):
         super().__init__()
         self._transformer = TransformerBase(**kwargs)
+        
     def output_dim(self):
         return self._transformer.output_dim()
 

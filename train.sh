@@ -4,7 +4,8 @@
 # ./scripts/training.py ./configs/training/implicit_00-06.yaml
 # ./scripts/training.py ./configs/training/deepclr_tf_indy_00.yaml
 
-./scripts/training.py ./configs/training/mulran.yaml --ckpt models/20230712_104454_deepclr_tf_00-06/ckpt_408000.tar
+
+#./scripts/training.py ./configs/training/mulran.yaml --ckpt models/20230712_104454_deepclr_tf_00-06/ckpt_408000.tar
 
 
 # if you want to start from checkpoints.

@@ -52,8 +52,16 @@ model:
 
           mlp_dropout : 0.1
 
-        mlp: [256, 512, 1024] #[256, 256, 512, 512, 1024]
+        # mlp: [256, 512, 1024] #[256, 256, 512, 512, 1024]
+        # linear: [1024, 512, 256]
+
+        mlp: [256, 512, 1024] #with knn + implicit
         linear: [1024, 512, 256]
+
+
+        k: 20
+        radius: 10.0
+        mlp_knn: [128, 128, 253]
 
     # output:
     #   name: OutputSimple

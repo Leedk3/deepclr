@@ -13,3 +13,5 @@ dist
 .idea
 2022*
 2023*
+models/
+kitti/

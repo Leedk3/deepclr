@@ -1,0 +1,26 @@
+etri
+Absolute Position Errors (APE):
+Mean: 40.9829, Std Dev: 21.8693
+Relative Position Errors (RPE):
+Mean: 0.3493, Std Dev: 0.1363
+Relative Rotational Errors (degrees):
+Mean: 0.3064, Std Dev: 0.5363
+
+
+town03
+Absolute Position Errors (APE):
+Mean: 23.8852, Std Dev: 18.8621
+Relative Position Errors (RPE):
+Mean: 0.1728, Std Dev: 0.1291
+Relative Rotational Errors (degrees):
+Mean: 0.2312, Std Dev: 0.4475
+
+
+town 10
+Absolute Position Errors (APE):
+Mean: 30.5358, Std Dev: 21.7071
+Relative Position Errors (RPE):
+Mean: 0.2383, Std Dev: 0.1726
+Relative Rotational Errors (degrees):
+Mean: 0.2893, Std Dev: 0.3680
+

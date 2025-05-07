@@ -18,7 +18,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 DEEPCLR_DIR="$(readlink -f "${SCRIPT_DIR}/../")"
 
 # default config
-GPU_NUM="0"
+GPU_NUM="1"
 CONTAINER_NAME="deepclr-pcdet-${GPU_NUM}"
 
 IMAGE_REGISTRY="docker.pkg.github.com/mhorn11/deepclr/"
@@ -155,18 +155,18 @@ fi
 
 # my statement
 DOCKER_ARGS+=(-v /home/leedk/deepclr/deepclr.egg-info:/deepclr/deepclr.egg-info:z)
-DOCKER_ARGS+=(-v /media/leedk/dataset/Dataset/etri/dataset:/deepclr/etri/original:z)
-DOCKER_ARGS+=(-v /media/leedk/dataset/Dataset/etri/dataset/odometry:/deepclr/etri/odometry:z)
+DOCKER_ARGS+=(-v /media/leedk/T9/Dataset/etri/dataset:/deepclr/etri/original:z)
+DOCKER_ARGS+=(-v /media/leedk/T9/Dataset/etri/dataset/odometry:/deepclr/etri/odometry:z)
 DOCKER_ARGS+=(-e ETRI_PATH="/deepclr/etri")
 
 DOCKER_ARGS+=(-v /home/leedk/deepclr/deepclr.egg-info:/deepclr/deepclr.egg-info:z)
-DOCKER_ARGS+=(-v /media/leedk/dataset/Dataset/kitti/dataset:/deepclr/kitti/original:z)
-DOCKER_ARGS+=(-v /media/leedk/dataset/Dataset/kitti/dataset/odometry:/deepclr/kitti/odometry:z)
+DOCKER_ARGS+=(-v /media/leedk/T9/Dataset/kitti/dataset:/deepclr/kitti/original:z)
+DOCKER_ARGS+=(-v /media/leedk/T9/Dataset/kitti/dataset/odometry:/deepclr/kitti/odometry:z)
 DOCKER_ARGS+=(-e KITTI_PATH="/deepclr/kitti")
 
 
-# DOCKER_ARGS+=(-e INDY_PATH="/media/leedk/dataset/Dataset/3D_data/racing_dataset")
-# DOCKER_ARGS+=(-e MULRAN_PATH="/media/leedk/dataset/Dataset/3D_data/MulRan")
+# DOCKER_ARGS+=(-e INDY_PATH="/media/leedk/T9/Dataset/3D_data/racing_dataset")
+# DOCKER_ARGS+=(-e MULRAN_PATH="/media/leedk/T9/Dataset/3D_data/MulRan")
 # DOCKER_ARGS+=(-e MODLE_PATH=/home/leedk/deepclr/models)
 DOCKER_ARGS+=(--network=host)
 
